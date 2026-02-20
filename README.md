@@ -197,11 +197,6 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtow
 
   一个功能丰富的 Telegram 机器人，专注于媒体资源管理、Emby 集成、自动下载和夸克网盘资源管理。
 
-## 打赏
-
-如果这个项目让你受益，你可以无偿赠与我1块钱，让我知道开源有价值。谢谢！
-
-![WeChatPay](https://cdn.jsdelivr.net/gh/Cp0204/Cp0204@main/img/wechat_pay_qrcode.png)
 
 ## 声明
 

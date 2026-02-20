@@ -179,13 +179,16 @@ class Cloud115Adapter(BaseCloudDriveAdapter):
 
         share_session = self._create_share_session(share_code, receive_code)
 
+        # 当请求了完整路径且 cid 不为根时，通过 BFS 解析路径
+        full_path = []
+        if cid and fetch_share_full_path:
+            full_path = self._resolve_share_path(
+                share_session, share_code, receive_code, cid
+            )
+
         list_merge = []
-        paths = []
         offset = 0
         limit = 50
-
-        if cid:
-            paths.append({"fid": cid, "name": ""})
 
         while True:
             url = (
@@ -220,9 +223,75 @@ class Cloud115Adapter(BaseCloudDriveAdapter):
         return {
             "code": 0,
             "message": "success",
-            "data": {"list": list_merge, "paths": paths},
+            "data": {
+                "list": list_merge,
+                "full_path": full_path,
+            },
             "metadata": {"_total": len(list_merge)},
         }
+
+    def _resolve_share_path(
+        self,
+        share_session,
+        share_code: str,
+        receive_code: str,
+        target_cid: str,
+        max_depth: int = 5,
+    ) -> List[Dict]:
+        """
+        在分享目录树中 BFS 查找 target_cid 的完整路径。
+        返回格式与 Quark full_path 一致: [{"fid": "...", "file_name": "..."}]
+        """
+        target_cid = str(target_cid)
+        # queue 每项: (当前目录cid, 已累计的路径列表)
+        queue = [("", [])]
+
+        for _ in range(max_depth):
+            next_queue = []
+            for current_cid, current_path in queue:
+                offset = 0
+                limit = 50
+                while True:
+                    url = (
+                        f"{self.WEB_URL}/webapi/share/snap"
+                        f"?share_code={share_code}&offset={offset}&limit={limit}"
+                        f"&asc=0&cid={current_cid}"
+                        f"&receive_code={receive_code}&format=json"
+                    )
+                    try:
+                        resp = share_session.get(url, timeout=15)
+                        data = self._safe_json(resp)
+                        if not data.get("state"):
+                            break
+                        file_list = data.get("data", {}).get("list", [])
+                        if not file_list:
+                            break
+                        for item in file_list:
+                            is_dir = "fid" not in item
+                            if not is_dir:
+                                continue
+                            item_cid = str(item.get("cid", ""))
+                            item_name = item.get("n", "")
+                            new_path = current_path + [
+                                {"fid": item_cid, "file_name": item_name}
+                            ]
+                            if item_cid == target_cid:
+                                return new_path
+                            next_queue.append((item_cid, new_path))
+                        if len(file_list) < limit:
+                            break
+                        offset += limit
+                    except Exception:
+                        break
+            if not next_queue:
+                break
+            queue = next_queue
+
+        logging.warning(
+            f"[115] _resolve_share_path: 未找到 cid={target_cid}，"
+            f"深度限制={max_depth}"
+        )
+        return []
 
     # ----------------------------------------------------------------
     #  用户网盘操作（使用带 cookie 的 auth_session）
