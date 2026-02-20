@@ -21,6 +21,13 @@ import urllib.parse
 from datetime import datetime
 from natsort import natsorted
 
+# 多网盘适配器支持
+try:
+    from adapters import AdapterFactory, AccountManager
+    MULTI_DRIVE_SUPPORT = True
+except ImportError:
+    MULTI_DRIVE_SUPPORT = False
+
 # 兼容青龙
 try:
     from treelib import Tree
@@ -280,9 +287,7 @@ class MagicRename:
             for f in file_list
             if f.get("file_name_re") and not f["dir"]
         ]
-        # print(f"filename_list_before: {filename_list}")
         dir_filename_dict = dir_filename_dict or self.dir_filename_dict
-        # print(f"dir_filename_list: {dir_filename_list}")
         # 合并目录文件列表
         filename_list = list(set(filename_list) | set(dir_filename_dict.values()))
         filename_list = natsorted(filename_list, key=self._custom_sort_key)
@@ -324,7 +329,6 @@ class MagicRename:
                     pattern = pattern.replace(key, "🔣")
             pattern = re.sub(r"\\[0-9]+", "🔣", pattern)  # \1 \2 \3
             pattern = f"({re.escape(pattern).replace('🔣', '.*?').replace('🔢', f')({pattern_i})(')})"
-            # print(f"pattern: {pattern}")
             # 获取起始编号
             if match := re.match(pattern, filename_list[-1]):
                 self.magic_variable["{I}"] = int(match.group(2))
@@ -334,11 +338,9 @@ class MagicRename:
                     self.dir_filename_dict[int(match.group(2))] = (
                         match.group(1) + magic_i + match.group(3)
                     )
-            # print(f"filename_list: {self.filename_list}")
 
     def is_exists(self, filename, filename_list, ignore_ext=False):
         """判断文件是否存在，处理忽略扩展名"""
-        # print(f"filename: {filename} filename_list: {filename_list}")
         if ignore_ext:
             filename = os.path.splitext(filename)[0]
             filename_list = [os.path.splitext(f)[0] for f in filename_list]
@@ -1210,6 +1212,391 @@ def do_save(account, tasklist=[]):
     print()
 
 
+def do_save_multi_drive(account_manager, tasklist=[]):
+    """
+    多网盘转存任务执行
+    使用适配器架构支持不同网盘
+    """
+    print(f"🧩 载入插件")
+    plugins, CONFIG_DATA["plugins"], task_plugins_config = Config.load_plugins(
+        CONFIG_DATA.get("plugins", {})
+    )
+    print()
+
+    # 获取所有活跃账户并更新保存路径
+    for name, adapter in account_manager.get_all_adapters().items():
+        if adapter.is_active:
+            print(f"更新账户 '{name}' ({adapter.DRIVE_TYPE}) 的目录映射")
+            # 筛选该网盘类型的任务
+            type_tasks = [
+                t for t in tasklist
+                if AdapterFactory.get_drive_type_by_url(t.get("shareurl", "")) == adapter.DRIVE_TYPE
+                or t.get("account_name") == name
+            ]
+            if type_tasks:
+                adapter.update_savepath_fid(type_tasks)
+
+    def is_time(task):
+        return (
+            not task.get("enddate")
+            or (
+                datetime.now().date()
+                <= datetime.strptime(task["enddate"], "%Y-%m-%d").date()
+            )
+        ) and (
+            "runweek" not in task
+            or (datetime.today().weekday() + 1 in task.get("runweek"))
+        )
+
+    # task_before 钩子
+    for plugin_name, plugin in plugins.items():
+        if plugin.is_active and hasattr(plugin, "task_before"):
+            tasklist = (
+                plugin.task_before(tasklist=tasklist, account=account_manager.get_default_adapter()) or tasklist
+            )
+
+    # 执行任务
+    for index, task in enumerate(tasklist):
+        print()
+        print(f"#{index+1}------------------")
+        print(f"任务名称: {task['taskname']}")
+        print(f"分享链接: {task['shareurl']}")
+        print(f"保存路径: {task['savepath']}")
+
+        # 获取该任务对应的适配器
+        adapter = account_manager.get_adapter_for_task(task)
+        if not adapter:
+            print(f"❌ 无法找到匹配的账户，跳过任务")
+            continue
+
+        print(f"使用账户: {adapter.nickname} ({adapter.DRIVE_TYPE})")
+
+        if task.get("pattern"):
+            print(f"正则匹配: {task['pattern']}")
+        if task.get("replace"):
+            print(f"正则替换: {task['replace']}")
+        if task.get("update_subdir"):
+            print(f"更子目录: {task['update_subdir']}")
+        if task.get("runweek") or task.get("enddate"):
+            print(
+                f"运行周期: WK{task.get('runweek',[])} ~ {task.get('enddate','forever')}"
+            )
+        print()
+
+        # 判断任务周期
+        if not is_time(task):
+            print(f"任务不在运行周期内，跳过")
+        else:
+            # 使用适配器执行任务
+            is_new_tree = do_save_task_with_adapter(adapter, task)
+
+            # 补充任务的插件配置
+            def merge_dicts(a, b):
+                result = a.copy()
+                for key, value in b.items():
+                    if (
+                        key in result
+                        and isinstance(result[key], dict)
+                        and isinstance(value, dict)
+                    ):
+                        result[key] = merge_dicts(result[key], value)
+                    elif key not in result:
+                        result[key] = value
+                return result
+
+            task["addition"] = merge_dicts(
+                task.get("addition", {}), task_plugins_config
+            )
+            # 调用插件
+            if is_new_tree:
+                print(f"🧩 调用插件")
+                for plugin_name, plugin in plugins.items():
+                    if plugin.is_active and hasattr(plugin, "run"):
+                        task = (
+                            plugin.run(task, account=adapter, tree=is_new_tree) or task
+                        )
+
+    print()
+    print(f"===============插件收尾===============")
+    for plugin_name, plugin in plugins.items():
+        if plugin.is_active and hasattr(plugin, "task_after"):
+            data = plugin.task_after(tasklist=tasklist, account=account_manager.get_default_adapter())
+            if data.get("tasklist"):
+                CONFIG_DATA["tasklist"] = data["tasklist"]
+            if data.get("config"):
+                CONFIG_DATA["plugins"][plugin_name] = data["config"]
+    print()
+
+
+def do_save_task_with_adapter(adapter, task):
+    """
+    使用适配器执行单个转存任务
+    这是 Quark.do_save_task 的通用版本
+    """
+    # 判断资源失效记录
+    if task.get("shareurl_ban"):
+        print(f"《{task['taskname']}》：{task['shareurl_ban']}")
+        return
+
+    # 链接转换所需参数
+    pwd_id, passcode, pdir_fid, _ = adapter.extract_url(task["shareurl"])
+
+    # 获取stoken，同时可验证资源是否失效
+    get_stoken = adapter.get_stoken(pwd_id, passcode)
+    if get_stoken.get("status") == 200:
+        stoken = get_stoken["data"]["stoken"]
+    elif get_stoken.get("status") == 500:
+        print(f"跳过任务：网络异常 {get_stoken.get('message')}")
+        return
+    else:
+        message = get_stoken.get("message")
+        add_notify(f"❌《{task['taskname']}》：{message}\n")
+        task["shareurl_ban"] = message
+        return
+
+    # 执行转存
+    updated_tree = dir_check_and_save_with_adapter(adapter, task, pwd_id, stoken, pdir_fid)
+    if updated_tree.size(1) > 0:
+        do_rename_with_adapter(adapter, updated_tree)
+        print()
+        add_notify(f"✅《{task['taskname']}》添加追更：\n{updated_tree}")
+        return updated_tree
+    else:
+        print(f"任务结束：没有新的转存任务")
+        return False
+
+
+def dir_check_and_save_with_adapter(adapter, task, pwd_id, stoken, pdir_fid="", subdir_path=""):
+    """
+    使用适配器进行目录检查和转存
+    这是 Quark.dir_check_and_save 的通用版本
+    """
+    tree = Tree()
+
+    # 获取分享文件列表
+    share_file_list = adapter.get_detail(pwd_id, stoken, pdir_fid)["data"]["list"]
+
+    if not share_file_list:
+        if subdir_path == "":
+            task["shareurl_ban"] = "分享为空，文件已被分享者删除"
+            add_notify(f"❌《{task['taskname']}》：{task['shareurl_ban']}\n")
+        return tree
+    elif (
+        len(share_file_list) == 1
+        and share_file_list[0]["dir"]
+        and subdir_path == ""
+    ):
+        print("🧠 该分享是一个文件夹，读取文件夹内列表")
+        share_file_list = adapter.get_detail(
+            pwd_id, stoken, share_file_list[0]["fid"]
+        )["data"]["list"]
+
+    # 获取目标目录文件列表
+    savepath = re.sub(r"/{2,}", "/", f"/{task['savepath']}{subdir_path}")
+    if not adapter.savepath_fid.get(savepath):
+        if get_fids := adapter.get_fids([savepath]):
+            adapter.savepath_fid[savepath] = get_fids[0]["fid"]
+        else:
+            print(f"❌ 目录 {savepath} fid获取失败，跳过转存")
+            return tree
+    to_pdir_fid = adapter.savepath_fid[savepath]
+    dir_file_list = adapter.ls_dir(to_pdir_fid)["data"]["list"]
+    dir_filename_list = [dir_file["file_name"] for dir_file in dir_file_list]
+
+    tree.create_node(
+        savepath,
+        pdir_fid,
+        data={
+            "is_dir": True,
+        },
+    )
+
+    # 文件命名类
+    mr = MagicRename(CONFIG_DATA.get("magic_regex", {}))
+    mr.set_taskname(task["taskname"])
+
+    # 魔法正则转换
+    pattern, replace = mr.magic_regex_conv(
+        task.get("pattern", ""), task.get("replace", "")
+    )
+
+    # 需保存的文件清单
+    need_save_list = []
+
+    # 添加符合的
+    for share_file in share_file_list:
+        search_pattern = (
+            task["update_subdir"]
+            if share_file["dir"] and task.get("update_subdir")
+            else pattern
+        )
+        # 正则文件名匹配
+        if re.search(search_pattern, share_file["file_name"]):
+            # 判断原文件名是否存在
+            if not mr.is_exists(
+                share_file["file_name"],
+                dir_filename_list,
+                (task.get("ignore_extension") and not share_file["dir"]),
+            ):
+                if share_file["dir"] or subdir_path:
+                    share_file["file_name_re"] = share_file["file_name"]
+                    need_save_list.append(share_file)
+                else:
+                    file_name_re = mr.sub(pattern, replace, share_file["file_name"])
+                    if not mr.is_exists(
+                        file_name_re,
+                        dir_filename_list,
+                        task.get("ignore_extension"),
+                    ):
+                        share_file["file_name_re"] = file_name_re
+                        need_save_list.append(share_file)
+            elif share_file["dir"]:
+                if task.get("update_subdir", False) and re.search(
+                    task["update_subdir"], share_file["file_name"]
+                ):
+                    if task.get("update_subdir_resave_mode", False):
+                        print(f"重存子目录：{savepath}/{share_file['file_name']}")
+                        subdir = next(
+                            (
+                                f
+                                for f in dir_file_list
+                                if f["file_name"] == share_file["file_name"]
+                            ),
+                            None,
+                        )
+                        delete_return = adapter.delete([subdir["fid"]])
+                        if delete_return.get("data", {}).get("task_id"):
+                            adapter.query_task(delete_return["data"]["task_id"])
+                        share_file["file_name_re"] = share_file["file_name"]
+                        need_save_list.append(share_file)
+                    else:
+                        print(f"检查子目录：{savepath}/{share_file['file_name']}")
+                        subdir_tree = dir_check_and_save_with_adapter(
+                            adapter,
+                            task,
+                            pwd_id,
+                            stoken,
+                            share_file["fid"],
+                            f"{subdir_path}/{share_file['file_name']}",
+                        )
+                        if subdir_tree.size(1) > 0:
+                            tree.create_node(
+                                "📁" + share_file["file_name"],
+                                share_file["fid"],
+                                parent=pdir_fid,
+                                data={
+                                    "is_dir": share_file["dir"],
+                                },
+                            )
+                            tree.merge(share_file["fid"], subdir_tree, deep=False)
+        if share_file["fid"] == task.get("startfid", ""):
+            break
+
+    if re.search(r"\{I+\}", replace):
+        mr.set_dir_file_list(dir_file_list, replace)
+        mr.sort_file_list(need_save_list)
+
+    # 转存文件
+    fid_list = [item["fid"] for item in need_save_list]
+    fid_token_list = [item.get("share_fid_token", item["fid"]) for item in need_save_list]
+    file_names = [item["file_name"] for item in need_save_list]
+
+    if fid_list:
+        err_msg = None
+        save_as_top_fids = []
+
+        while fid_list:
+            batch_fids = fid_list[:100]
+            batch_tokens = fid_token_list[:100]
+            batch_names = file_names[:100]
+
+            # 115 适配器支持 file_names 参数，用于按文件名匹配新 fid
+            if hasattr(adapter, 'DRIVE_TYPE') and adapter.DRIVE_TYPE == "115":
+                save_file_return = adapter.save_file(
+                    batch_fids, batch_tokens, to_pdir_fid, pwd_id, stoken,
+                    file_names=batch_names
+                )
+            else:
+                save_file_return = adapter.save_file(
+                    batch_fids, batch_tokens, to_pdir_fid, pwd_id, stoken
+                )
+
+            fid_list = fid_list[100:]
+            fid_token_list = fid_token_list[100:]
+            file_names = file_names[100:]
+
+            if save_file_return["code"] == 0:
+                # 检查是否是同步操作（如 115）
+                if save_file_return["data"].get("_sync"):
+                    save_as_top_fids.extend(
+                        save_file_return["data"].get("save_as_top_fids", [])
+                    )
+                else:
+                    task_id = save_file_return["data"]["task_id"]
+                    query_task_return = adapter.query_task(task_id)
+                    if query_task_return["code"] == 0:
+                        save_as_top_fids.extend(
+                            query_task_return["data"]["save_as"]["save_as_top_fids"]
+                        )
+                    else:
+                        err_msg = query_task_return.get("message", "查询任务失败")
+            else:
+                err_msg = save_file_return.get("message", "转存失败")
+
+            if err_msg:
+                add_notify(f"❌《{task['taskname']}》转存失败：{err_msg}\n")
+
+        # 建立目录树
+        if len(need_save_list) == len(save_as_top_fids):
+            for index, item in enumerate(need_save_list):
+                icon = _get_file_icon(item)
+                tree.create_node(
+                    f"{icon}{item['file_name_re']}",
+                    item["fid"],
+                    parent=pdir_fid,
+                    data={
+                        "file_name": item["file_name"],
+                        "file_name_re": item["file_name_re"],
+                        "fid": f"{save_as_top_fids[index]}",
+                        "path": f"{savepath}/{item['file_name_re']}",
+                        "is_dir": item["dir"],
+                        "obj_category": item.get("obj_category", ""),
+                    },
+                )
+
+    return tree
+
+
+def do_rename_with_adapter(adapter, tree, node_id=None):
+    """使用适配器进行重命名"""
+    if node_id is None:
+        node_id = tree.root
+    for child in tree.children(node_id):
+        file = child.data
+        if file.get("is_dir"):
+            pass
+        elif file.get("file_name_re") and file["file_name_re"] != file["file_name"]:
+            rename_ret = adapter.rename(file["fid"], file["file_name_re"])
+            print(f"重命名：{file['file_name']} → {file['file_name_re']}")
+            if rename_ret.get("code") != 0:
+                print(f"      ↑ 失败，{rename_ret.get('message', '未知错误')}")
+
+
+def _get_file_icon(f):
+    """获取文件图标"""
+    if f.get("dir"):
+        return "📁"
+    ico_maps = {
+        "video": "🎞️",
+        "image": "🖼️",
+        "audio": "🎵",
+        "doc": "📄",
+        "archive": "📦",
+        "default": "",
+    }
+    return ico_maps.get(f.get("obj_category"), "")
+
+
 def main():
     global CONFIG_DATA
     start_time = datetime.now()
@@ -1260,30 +1647,66 @@ def main():
         Config.breaking_change_update(CONFIG_DATA)
         cookie_val = CONFIG_DATA.get("cookie")
         cookie_form_file = True
-    # 获取cookie
-    cookies = Config.get_cookies(cookie_val)
-    if not cookies:
-        print("❌ cookie 未配置")
-        return
-    accounts = [Quark(cookie, index) for index, cookie in enumerate(cookies)]
-    # 签到
-    print(f"===============签到任务===============")
-    if tasklist_from_env:
-        verify_account(accounts[0])
-    else:
-        for account in accounts:
-            verify_account(account)
-            do_sign(account)
-    print()
-    # 转存
-    if accounts[0].is_active and cookie_form_file:
-        print(f"===============转存任务===============")
-        # 任务列表
-        if tasklist_from_env:
-            do_save(accounts[0], tasklist_from_env)
-        else:
-            do_save(accounts[0], CONFIG_DATA.get("tasklist", []))
+
+    # 检查是否使用新的多网盘配置格式
+    use_multi_drive = MULTI_DRIVE_SUPPORT and "accounts" in CONFIG_DATA and CONFIG_DATA["accounts"]
+
+    if use_multi_drive:
+        # 新格式：多网盘支持
+        print(f"🔄 检测到多网盘配置，使用适配器模式")
+        account_manager = AccountManager()
+        account_manager.load_accounts(CONFIG_DATA)
+
+        # 验证并初始化所有账户
+        print(f"===============验证账户===============")
+        active_count = account_manager.init_all_adapters()
+        if active_count == 0:
+            print("❌ 没有可用的账户")
+            return
         print()
+
+        # 签到（仅夸克账户）
+        print(f"===============签到任务===============")
+        for adapter in account_manager.get_adapters_by_type("quark"):
+            if adapter.is_active and hasattr(adapter, 'get_growth_info'):
+                do_sign(adapter)
+        print()
+
+        # 转存
+        if cookie_form_file:
+            print(f"===============转存任务===============")
+            if tasklist_from_env:
+                do_save_multi_drive(account_manager, tasklist_from_env)
+            else:
+                do_save_multi_drive(account_manager, CONFIG_DATA.get("tasklist", []))
+            print()
+    else:
+        # 旧格式：兼容现有逻辑
+        # 获取cookie
+        cookies = Config.get_cookies(cookie_val)
+        if not cookies:
+            print("❌ cookie 未配置")
+            return
+        accounts = [Quark(cookie, index) for index, cookie in enumerate(cookies)]
+        # 签到
+        print(f"===============签到任务===============")
+        if tasklist_from_env:
+            verify_account(accounts[0])
+        else:
+            for account in accounts:
+                verify_account(account)
+                do_sign(account)
+        print()
+        # 转存
+        if accounts[0].is_active and cookie_form_file:
+            print(f"===============转存任务===============")
+            # 任务列表
+            if tasklist_from_env:
+                do_save(accounts[0], tasklist_from_env)
+            else:
+                do_save(accounts[0], CONFIG_DATA.get("tasklist", []))
+            print()
+
     # 通知
     if NOTIFYS:
         notify_body = "\n".join(NOTIFYS)

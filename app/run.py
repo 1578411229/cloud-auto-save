@@ -33,6 +33,13 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 from quark_auto_save import Quark, Config, MagicRename
 
+# 尝试导入多网盘支持模块
+try:
+    from adapters import AdapterFactory, AccountManager, QuarkAdapter, Cloud115Adapter
+    MULTI_DRIVE_SUPPORT = True
+except ImportError:
+    MULTI_DRIVE_SUPPORT = False
+
 print(
     r"""
    ____    ___   _____
@@ -121,6 +128,116 @@ def is_login():
         return False
 
 
+def get_account_by_name(account_name=None):
+    """
+    根据账户名称获取对应的适配器或 Quark 实例
+    支持新格式(accounts数组)和旧格式(cookie数组)的兼容
+    
+    Args:
+        account_name: 账户名称，None 或 'auto' 表示使用默认账户
+    
+    Returns:
+        tuple: (adapter/quark实例, drive_type)
+    """
+    # 检查是否使用新格式配置
+    if MULTI_DRIVE_SUPPORT and config_data.get("accounts"):
+        accounts = config_data.get("accounts", [])
+        enabled_accounts = [acc for acc in accounts if acc.get("enabled", True)]
+        
+        if not enabled_accounts:
+            # 无可用账户，回退到旧格式
+            if config_data.get("cookie"):
+                return Quark(config_data["cookie"][0]), "quark"
+            return None, None
+        
+        # 查找指定账户或默认账户
+        target_account = None
+        if account_name and account_name != "auto":
+            for acc in enabled_accounts:
+                if acc.get("name") == account_name:
+                    target_account = acc
+                    break
+        
+        if not target_account:
+            # 使用默认账户或第一个可用账户
+            for acc in enabled_accounts:
+                if acc.get("is_default") or acc.get("default"):
+                    target_account = acc
+                    break
+            if not target_account:
+                target_account = enabled_accounts[0]
+        
+        # 创建适配器
+        drive_type = target_account.get("drive_type", "quark")
+        cookie = target_account.get("cookie", "")
+        
+        if drive_type == "quark":
+            adapter = QuarkAdapter(cookie)
+        elif drive_type == "115":
+            adapter = Cloud115Adapter(cookie)
+        else:
+            adapter = QuarkAdapter(cookie)
+        
+        return adapter, drive_type
+    
+    # 旧格式兼容
+    if config_data.get("cookie"):
+        return Quark(config_data["cookie"][0]), "quark"
+    
+    return None, None
+
+
+def get_adapter_for_url(shareurl):
+    """
+    根据分享链接 URL 自动选择合适的适配器
+    
+    Args:
+        shareurl: 分享链接 URL
+    
+    Returns:
+        tuple: (adapter/quark实例, drive_type)
+    """
+    if not MULTI_DRIVE_SUPPORT:
+        if config_data.get("cookie"):
+            return Quark(config_data["cookie"][0]), "quark"
+        return None, None
+    
+    # 根据 URL 判断网盘类型
+    drive_type = AdapterFactory.get_drive_type_by_url(shareurl)
+    logging.debug(f">>> URL检测: {shareurl[:50]}... -> drive_type={drive_type}")
+    
+    if not drive_type:
+        logging.warning(f">>> 无法识别的分享链接类型: {shareurl}")
+        # 尝试回退到旧格式的夸克
+        if config_data.get("cookie"):
+            return Quark(config_data["cookie"][0]), "quark"
+        return None, None
+    
+    # 从账户中查找对应类型的可用账户
+    if config_data.get("accounts"):
+        accounts = config_data.get("accounts", [])
+        logging.debug(f">>> 查找 {drive_type} 类型账户，共有 {len(accounts)} 个账户")
+        for acc in accounts:
+            acc_enabled = acc.get("enabled", True)
+            acc_type = acc.get("drive_type")
+            logging.debug(f">>>   账户 '{acc.get('name')}': type={acc_type}, enabled={acc_enabled}")
+            if acc_enabled and acc_type == drive_type:
+                cookie = acc.get("cookie", "")
+                logging.info(f">>> 使用账户 '{acc.get('name')}' ({drive_type})")
+                if drive_type == "quark":
+                    return QuarkAdapter(cookie), drive_type
+                elif drive_type == "115":
+                    return Cloud115Adapter(cookie), drive_type
+    
+    # 回退到旧格式
+    if drive_type == "quark" and config_data.get("cookie"):
+        logging.info(f">>> 回退到旧格式Cookie配置")
+        return Quark(config_data["cookie"][0]), "quark"
+    
+    logging.warning(f">>> 未找到 {drive_type} 类型的可用账户")
+    return None, None
+
+
 # 设置icon
 @app.route("/favicon.ico")
 def favicon():
@@ -180,6 +297,11 @@ def get_data():
     del data["webui"]
     data["api_token"] = get_login_token()
     data["task_plugins_config_default"] = task_plugins_config_default
+    # 添加多网盘支持标识
+    data["multi_drive_support"] = MULTI_DRIVE_SUPPORT
+    # 确保 accounts 字段存在（新格式支持）
+    if "accounts" not in data:
+        data["accounts"] = []
     return jsonify({"success": True, "data": data})
 
 
@@ -328,126 +450,202 @@ def get_task_suggestions():
 def get_share_detail():
     if not is_login():
         return jsonify({"success": False, "message": "未登录"})
-    shareurl = request.json.get("shareurl", "")
-    stoken = request.json.get("stoken", "")
-    account = Quark()
-    pwd_id, passcode, pdir_fid, paths = account.extract_url(shareurl)
-    if not stoken:
-        get_stoken = account.get_stoken(pwd_id, passcode)
-        if get_stoken.get("status") == 200:
-            stoken = get_stoken["data"]["stoken"]
+    
+    try:
+        shareurl = request.json.get("shareurl", "")
+        stoken = request.json.get("stoken", "")
+        account_name = request.json.get("account_name", "")
+        
+        # 根据 URL 或指定账户获取适配器
+        if account_name and account_name != "auto":
+            account, drive_type = get_account_by_name(account_name)
         else:
-            return jsonify(
-                {"success": False, "data": {"error": get_stoken.get("message")}}
-            )
-    share_detail = account.get_detail(
-        pwd_id, stoken, pdir_fid, _fetch_share=1, fetch_share_full_path=1
-    )
+            account, drive_type = get_adapter_for_url(shareurl)
+        
+        if not account:
+            # 检测URL类型以提供更详细的错误信息
+            detected_type = AdapterFactory.get_drive_type_by_url(shareurl) if MULTI_DRIVE_SUPPORT else "quark"
+            type_label = {"quark": "夸克网盘", "115": "115网盘"}.get(detected_type, detected_type)
+            return jsonify({"success": False, "data": {"error": f"未配置有效的{type_label}账户，请先在「系统配置」→「多网盘账户」中添加{type_label}账户"}})
 
-    if share_detail.get("code") != 0:
-        return jsonify(
-            {"success": False, "data": {"error": share_detail.get("message")}}
+        pwd_id, passcode, pdir_fid, paths = account.extract_url(shareurl)
+        if not stoken:
+            get_stoken = account.get_stoken(pwd_id, passcode)
+            if get_stoken.get("status") == 200:
+                stoken = get_stoken["data"]["stoken"]
+            else:
+                return jsonify(
+                    {"success": False, "data": {"error": get_stoken.get("message")}}
+                )
+        share_detail = account.get_detail(
+            pwd_id, stoken, pdir_fid, _fetch_share=1, fetch_share_full_path=1
         )
 
-    data = share_detail["data"]
-    data["paths"] = [
-        {"fid": i["fid"], "name": i["file_name"]}
-        for i in share_detail["data"].get("full_path", [])
-    ] or paths
-    data["stoken"] = stoken
+        if share_detail.get("code") != 0:
+            return jsonify(
+                {"success": False, "data": {"error": share_detail.get("message")}}
+            )
 
-    # 正则处理预览
-    def preview_regex(data):
-        task = request.json.get("task", {})
-        magic_regex = request.json.get("magic_regex", {})
-        mr = MagicRename(magic_regex)
-        mr.set_taskname(task.get("taskname", ""))
-        account = Quark(config_data["cookie"][0])
-        get_fids = account.get_fids([task.get("savepath", "")])
-        if get_fids:
-            dir_file_list = account.ls_dir(get_fids[0]["fid"])["data"]["list"]
-            dir_filename_list = [dir_file["file_name"] for dir_file in dir_file_list]
-        else:
+        data = share_detail["data"]
+        data["paths"] = [
+            {"fid": i["fid"], "name": i["file_name"]}
+            for i in share_detail["data"].get("full_path", [])
+        ] or paths
+        data["stoken"] = stoken
+        data["drive_type"] = drive_type  # 返回网盘类型供前端使用
+
+        # 正则处理预览
+        def preview_regex(data, share_account=None):
+            """
+            对分享文件列表应用正则预览处理。
+            
+            Args:
+                data: 分享文件列表数据
+                share_account: 用于获取分享的账户（作为后备账户使用）
+            """
+            task = request.json.get("task", {})
+            magic_regex = request.json.get("magic_regex", {})
+            mr = MagicRename(magic_regex)
+            mr.set_taskname(task.get("taskname", ""))
+            # 获取用于预览的账户（用于查看目标目录中的已有文件）
+            # 优先级：1.任务指定的账户 2.用于获取分享的账户 3.旧格式cookie
+            preview_account = None
+            task_account_name = task.get("account_name", "")
+            
+            if task_account_name and task_account_name != "auto":
+                preview_account, _ = get_account_by_name(task_account_name)
+            
+            if not preview_account and share_account:
+                # 使用获取分享时的同一个账户
+                preview_account = share_account
+            
+            if not preview_account:
+                # 回退到旧格式
+                if config_data.get("cookie"):
+                    preview_account = Quark(config_data["cookie"][0])
+                else:
+                    return
+            
+            # 获取目标目录的已有文件列表
             dir_file_list = []
             dir_filename_list = []
+            savepath = task.get("savepath", "")
+            
+            if savepath:
+                try:
+                    get_fids = preview_account.get_fids([savepath])
+                    if get_fids:
+                        ls_result = preview_account.ls_dir(get_fids[0]["fid"])
+                        if ls_result and "data" in ls_result:
+                            dir_file_list = ls_result["data"].get("list", [])
+                            dir_filename_list = [f["file_name"] for f in dir_file_list]
+                except Exception as e:
+                    logging.warning(f"[preview_regex] 获取目标目录失败: {e}")
 
-        pattern, replace = mr.magic_regex_conv(
-            task.get("pattern", ""), task.get("replace", "")
-        )
-        for share_file in data["list"]:
-            search_pattern = (
-                task["update_subdir"]
-                if share_file["dir"] and task.get("update_subdir")
-                else pattern
+            pattern, replace = mr.magic_regex_conv(
+                task.get("pattern", ""), task.get("replace", "")
             )
-            if re.search(search_pattern, share_file["file_name"]):
-                # 文件名重命名，目录不重命名
-                file_name_re = (
-                    share_file["file_name"]
-                    if share_file["dir"]
-                    else mr.sub(pattern, replace, share_file["file_name"])
+            for share_file in data["list"]:
+                search_pattern = (
+                    task["update_subdir"]
+                    if share_file["dir"] and task.get("update_subdir")
+                    else pattern
                 )
-                if file_name_saved := mr.is_exists(
-                    file_name_re,
-                    dir_filename_list,
-                    (task.get("ignore_extension") and not share_file["dir"]),
-                ):
-                    share_file["file_name_saved"] = file_name_saved
-                else:
-                    share_file["file_name_re"] = file_name_re
+                if re.search(search_pattern, share_file["file_name"]):
+                    # 文件名重命名，目录不重命名
+                    file_name_re = (
+                        share_file["file_name"]
+                        if share_file["dir"]
+                        else mr.sub(pattern, replace, share_file["file_name"])
+                    )
+                    if file_name_saved := mr.is_exists(
+                        file_name_re,
+                        dir_filename_list,
+                        (task.get("ignore_extension") and not share_file["dir"]),
+                    ):
+                        share_file["file_name_saved"] = file_name_saved
+                    else:
+                        share_file["file_name_re"] = file_name_re
+            # 文件列表排序
+            if re.search(r"\{I+\}", replace):
+                mr.set_dir_file_list(dir_file_list, replace)
+                mr.sort_file_list(data["list"])
 
-        # 文件列表排序
-        if re.search(r"\{I+\}", replace):
-            mr.set_dir_file_list(dir_file_list, replace)
-            mr.sort_file_list(data["list"])
+        if request.json.get("task"):
+            preview_regex(data, share_account=account)
 
-    if request.json.get("task"):
-        preview_regex(data)
-
-    return jsonify({"success": True, "data": data})
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        logging.error(f">>> get_share_detail 错误: {str(e)}")
+        return jsonify({"success": False, "data": {"error": f"获取分享详情失败: {str(e)}"}})
 
 
 @app.route("/get_savepath_detail")
 def get_savepath_detail():
     if not is_login():
         return jsonify({"success": False, "message": "未登录"})
-    account = Quark(config_data["cookie"][0])
-    paths = []
-    if path := request.args.get("path"):
-        path = re.sub(r"/+", "/", path)
-        if path == "/":
-            fid = 0
-        else:
-            dir_names = path.split("/")
-            if dir_names[0] == "":
-                dir_names.pop(0)
-            path_fids = []
-            current_path = ""
-            for dir_name in dir_names:
-                current_path += "/" + dir_name
-                path_fids.append(current_path)
-            if get_fids := account.get_fids(path_fids):
-                fid = get_fids[-1]["fid"]
-                paths = [
-                    {"fid": get_fid["fid"], "name": dir_name}
-                    for get_fid, dir_name in zip(get_fids, dir_names)
-                ]
+    
+    try:
+        # 支持通过参数指定账户
+        account_name = request.args.get("account_name", "")
+        account, drive_type = get_account_by_name(account_name)
+        
+        if not account:
+            return jsonify({"success": False, "data": {"error": "未配置有效的网盘账户，请先在系统配置中添加Cookie或多网盘账户"}})
+        
+        paths = []
+        if path := request.args.get("path"):
+            path = re.sub(r"/+", "/", path)
+            if path == "/":
+                fid = 0
             else:
-                return jsonify({"success": False, "data": {"error": "获取fid失败"}})
-    else:
-        fid = request.args.get("fid", "0")
-    file_list = {
-        "list": account.ls_dir(fid)["data"]["list"],
-        "paths": paths,
-    }
-    return jsonify({"success": True, "data": file_list})
+                dir_names = path.split("/")
+                if dir_names[0] == "":
+                    dir_names.pop(0)
+                path_fids = []
+                current_path = ""
+                for dir_name in dir_names:
+                    current_path += "/" + dir_name
+                    path_fids.append(current_path)
+                get_fids = account.get_fids(path_fids)
+                if get_fids:
+                    fid = get_fids[-1]["fid"]
+                    paths = [
+                        {"fid": get_fid["fid"], "name": dir_name}
+                        for get_fid, dir_name in zip(get_fids, dir_names)
+                    ]
+                else:
+                    return jsonify({"success": False, "data": {"error": "获取fid失败，请检查路径是否存在"}})
+        else:
+            fid = request.args.get("fid", "0")
+        
+        ls_result = account.ls_dir(fid)
+        if not ls_result or "data" not in ls_result:
+            return jsonify({"success": False, "data": {"error": "获取目录列表失败，请检查Cookie是否有效"}})
+        
+        file_list = {
+            "list": ls_result["data"].get("list", []),
+            "paths": paths,
+            "drive_type": drive_type,  # 返回网盘类型
+        }
+        return jsonify({"success": True, "data": file_list})
+    except Exception as e:
+        logging.error(f">>> get_savepath_detail 错误: {str(e)}")
+        return jsonify({"success": False, "data": {"error": f"获取目录失败: {str(e)}"}})
 
 
 @app.route("/delete_file", methods=["POST"])
 def delete_file():
     if not is_login():
         return jsonify({"success": False, "message": "未登录"})
-    account = Quark(config_data["cookie"][0])
+    
+    # 支持通过参数指定账户
+    account_name = request.json.get("account_name", "")
+    account, _ = get_account_by_name(account_name)
+    
+    if not account:
+        return jsonify({"success": False, "message": "未配置有效的网盘账户"})
+    
     if fid := request.json.get("fid"):
         response = account.delete([fid])
     else:

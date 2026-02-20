@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>夸克自动转存</title>
+  <title>网盘自动转存</title>
   <!-- CSS -->
   <link rel="stylesheet" href="./static/css/bootstrap.min.css">
   <link rel="stylesheet" href="./static/css/bootstrap-icons.min.css">
@@ -22,7 +22,7 @@
   <div id="app">
 
     <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
-      <a class="navbar-brand col-md-3 col-lg-2 mr-0 px-3" href="#"><i class="bi bi-clouds"></i> 夸克自动转存</a>
+      <a class="navbar-brand col-md-3 col-lg-2 mr-0 px-3" href="#"><i class="bi bi-clouds"></i> 网盘自动转存</a>
       <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-toggle="collapse" data-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false">
         <span class="navbar-toggler-icon"></span>
       </button>
@@ -83,6 +83,60 @@
               <input type="text" v-model="formData.cookie[index]" class="form-control" placeholder="打开 pan.quark.com 按 F12 抓取">
               <div class="input-group-append">
                 <button type="button" class="btn btn-outline-danger" @click="removeCookie(index)">-</button>
+              </div>
+            </div>
+
+            <!-- 多网盘账户管理 -->
+            <div class="row title">
+              <div class="col-10">
+                <h2><i class="bi bi-people"></i> 多网盘账户</h2>
+                <small class="text-muted">配置多个网盘账户，支持夸克、115等网盘的自动转存</small>
+              </div>
+              <div class="col-2 text-right">
+                <button type="button" class="btn btn-outline-primary" @click="addAccount()">+</button>
+              </div>
+            </div>
+            <div v-if="formData.accounts && formData.accounts.length === 0" class="alert alert-info">
+              <i class="bi bi-info-circle"></i> 暂无多网盘账户配置。如需使用多网盘功能，请点击 + 添加账户。
+              <br><small>提示：如果只使用夸克网盘，可以继续使用上方的 Cookie 配置，无需配置此项。</small>
+            </div>
+            <div v-for="(account, index) in formData.accounts" :key="'account_'+index" class="card mb-2">
+              <div class="card-body p-2">
+                <div class="row align-items-center">
+                  <div class="col-md-3">
+                    <div class="input-group input-group-sm">
+                      <div class="input-group-prepend">
+                        <span class="input-group-text"><i class="bi bi-tag"></i></span>
+                      </div>
+                      <input type="text" v-model="account.name" class="form-control" placeholder="账户名称" 
+                             @focus="rememberAccountName(index, account.name)" 
+                             @blur="updateTasksAccountName(index, account.name)">
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <select v-model="account.drive_type" class="form-control form-control-sm">
+                      <option v-for="dt in driveTypes" :key="dt.value" :value="dt.value">
+                        {{ dt.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="col-md-5">
+                    <input type="text" v-model="account.cookie" class="form-control form-control-sm" placeholder="Cookie">
+                  </div>
+                  <div class="col-md-2 text-right">
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn" :class="account.enabled ? 'btn-success' : 'btn-outline-secondary'" @click="account.enabled = !account.enabled" :title="account.enabled ? '已启用' : '已禁用'">
+                        <i class="bi" :class="account.enabled ? 'bi-check-circle' : 'bi-x-circle'"></i>
+                      </button>
+                      <button type="button" class="btn" :class="account.default ? 'btn-warning' : 'btn-outline-secondary'" @click="setDefaultAccount(index)" title="设为默认">
+                        <i class="bi bi-star" :class="account.default ? 'bi-star-fill' : ''"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-danger" @click="removeAccount(index)">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -275,7 +329,7 @@
             </div>
             <hr>
             <div class="row">
-              <div class="col-lg-6 col-md-12">
+              <div class="col-lg-4 col-md-12 mb-2">
                 <div class="row">
                   <label class="col-form-label col-md-3">名称筛选</label>
                   <div class="input-group col-md-9">
@@ -286,7 +340,7 @@
                   </div>
                 </div>
               </div>
-              <div class="col-lg-6 col-md-12">
+              <div class="col-lg-4 col-md-12 mb-2">
                 <div class="row">
                   <label class="col-form-label col-md-3">路径筛选</label>
                   <div class="input-group col-md-9">
@@ -299,14 +353,38 @@
                   </div>
                 </div>
               </div>
+              <div class="col-lg-4 col-md-12 mb-2" v-if="formData.accounts && formData.accounts.length > 0">
+                <div class="row">
+                  <label class="col-form-label col-md-3">账户筛选</label>
+                  <div class="input-group col-md-9">
+                    <select class="form-control" v-model="taskAccountFilter">
+                      <option value="">全部账户</option>
+                      <option value="__auto__">自动选择</option>
+                      <option v-for="acc in formData.accounts.filter(a => a.enabled)" :key="acc.name" :value="acc.name">
+                        {{ acc.name }} ({{ getDriveTypeLabel(acc.drive_type) }})
+                      </option>
+                    </select>
+                    <div class="input-group-append">
+                      <button type="button" class="btn btn-outline-secondary" @click="clearData('taskAccountFilter')"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div v-for="(task, index) in formData.tasklist" :key="index" class="task mb-3">
-              <template v-if="(taskDirSelected == '' || getParentDirectory(task.savepath) == taskDirSelected) && task.taskname.includes(taskNameFilter)">
+              <template v-if="filterTask(task)">
                 <hr>
                 <div class="form-group row" style="align-items:center">
                   <div class="col pl-0" data-toggle="collapse" :data-target="'#collapse_'+index" aria-expanded="true" :aria-controls="'collapse_'+index">
                     <div class="btn btn-block text-left">
                       <i class="bi bi-caret-right-fill"></i> #<span v-html="`${index+1}: ${task.taskname}`"></span>
+                      <!-- 显示当前使用的网盘账户标签 -->
+                      <span v-if="task.account_name" class="badge badge-info ml-2" :title="'使用账户: ' + task.account_name">
+                        <i class="bi bi-person-fill"></i> {{ task.account_name }}
+                      </span>
+                      <span v-else-if="formData.accounts && formData.accounts.length > 0" class="badge badge-secondary ml-2" title="自动选择账户">
+                        <i class="bi bi-person"></i> 自动
+                      </span>
                     </div>
                   </div>
                   <div class="col-auto">
@@ -359,6 +437,44 @@
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                  <div class="form-group row" v-if="formData.accounts && formData.accounts.length > 0" title="选择用于转存的网盘账户，留空则根据分享链接自动选择">
+                    <label class="col-sm-2 col-form-label"><i class="bi bi-person-badge"></i> 使用账户</label>
+                    <div class="col-sm-10">
+                      <div class="input-group">
+                        <div class="input-group-prepend">
+                          <span class="input-group-text" :class="{'bg-info text-white': task.account_name}">
+                            <i :class="task.account_name ? 'bi bi-person-fill' : 'bi bi-person'"></i>
+                          </span>
+                        </div>
+                        <select v-model="task.account_name" class="form-control" :class="{'border-info': task.account_name}">
+                          <option value="">自动选择（根据链接类型）</option>
+                          <option v-for="acc in formData.accounts.filter(a => a.enabled)" :key="acc.name" :value="acc.name">
+                            {{ acc.name }} ({{ getDriveTypeLabel(acc.drive_type) }})
+                          </option>
+                        </select>
+                        <div class="input-group-append" v-if="task.account_name">
+                          <button type="button" class="btn btn-outline-secondary" @click="task.account_name=''" title="清除选择，使用自动选择">
+                            <i class="bi bi-x-lg"></i>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- 没有配置多网盘账户时显示提示 -->
+                  <div class="form-group row" v-else title="配置多网盘账户后可在此选择使用的账户">
+                    <label class="col-sm-2 col-form-label"><i class="bi bi-person-badge"></i> 使用账户</label>
+                    <div class="col-sm-10">
+                      <div class="input-group">
+                        <input type="text" class="form-control" value="默认（使用Cookie配置）" disabled>
+                        <div class="input-group-append">
+                          <button type="button" class="btn btn-outline-primary" @click="changeTab('config')" title="前往配置多网盘账户">
+                            <i class="bi bi-gear"></i> 配置账户
+                          </button>
+                        </div>
+                      </div>
+                      <small class="form-text text-muted">如需使用115网盘等多网盘功能，请先在「系统配置」中添加多网盘账户</small>
                     </div>
                   </div>
                   <div class="form-group row">
@@ -620,8 +736,13 @@
         versionTips: "",
         plugin_flags: "[[ plugin_flags ]]",
         weekdays: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+        driveTypes: [
+          { value: 'quark', label: '夸克网盘', icon: 'bi-cloud' },
+          { value: '115', label: '115网盘', icon: 'bi-hdd-network' }
+        ],
         formData: {
           cookie: [],
+          accounts: [],  // 多网盘账户配置
           push_config: {},
           media_servers: {},
           tasklist: [],
@@ -651,12 +772,21 @@
           enddate: "",
           addition: {},
           ignore_extension: false,
-          runweek: [1, 2, 3, 4, 5, 6, 7]
+          runweek: [1, 2, 3, 4, 5, 6, 7],
+          account_name: ""  // 指定使用的账户
+        },
+        newAccount: {
+          name: "",
+          drive_type: "quark",
+          cookie: "",
+          enabled: true,
+          default: false
         },
         run_log: "",
         taskDirs: [""],
         taskDirSelected: "",
         taskNameFilter: "",
+        taskAccountFilter: "",  // 按账户筛选任务
         modalLoading: false,
         smart_param: {
           index: null,
@@ -681,7 +811,10 @@
           switchShare: false,
           previewRegex: false,
           sortBy: "updated_at",
-          sortOrder: "desc"
+          sortOrder: "desc",
+          driveType: "quark",       // 当前显示的网盘类型
+          tempAccountName: null,    // 临时账户名称（从URL自动检测）
+          error: undefined          // 错误信息
         },
       },
       filters: {
@@ -785,6 +918,17 @@
                   enable: ""
                 };
               }
+              // 确保accounts配置存在
+              if (!config_data.accounts) {
+                config_data.accounts = [];
+              }
+              // 确保任务有account_name字段
+              config_data.tasklist = config_data.tasklist.map(task => {
+                if (!task.hasOwnProperty('account_name')) {
+                  task.account_name = "";
+                }
+                return task;
+              });
               this.formData = config_data;
               setTimeout(() => {
                 this.configModified = false;
@@ -833,6 +977,61 @@
         removeCookie(index) {
           if (this.formData.cookie[index] == "" || confirm("确认删除吗？"))
             this.formData.cookie.splice(index, 1);
+        },
+        // 多网盘账户管理方法
+        addAccount() {
+          if (!this.formData.accounts) {
+            this.$set(this.formData, 'accounts', []);
+          }
+          const newAcc = {
+            name: `账户${this.formData.accounts.length + 1}`,
+            drive_type: 'quark',
+            cookie: '',
+            enabled: true,
+            default: this.formData.accounts.length === 0
+          };
+          this.formData.accounts.push(newAcc);
+        },
+        removeAccount(index) {
+          if (confirm("确认删除此账户吗？")) {
+            const wasDefault = this.formData.accounts[index].default;
+            this.formData.accounts.splice(index, 1);
+            // 如果删除的是默认账户，将第一个设为默认
+            if (wasDefault && this.formData.accounts.length > 0) {
+              this.formData.accounts[0].default = true;
+            }
+          }
+        },
+        setDefaultAccount(index) {
+          this.formData.accounts.forEach((acc, i) => {
+            acc.default = (i === index);
+          });
+        },
+        // 记住账户原名称，用于修改时同步更新任务
+        rememberAccountName(index, name) {
+          this._oldAccountName = name;
+        },
+        // 更新所有引用旧账户名的任务
+        updateTasksAccountName(index, newName) {
+          const oldName = this._oldAccountName;
+          if (oldName && oldName !== newName && newName) {
+            // 更新所有引用旧名称的任务
+            let updatedCount = 0;
+            this.formData.tasklist.forEach(task => {
+              if (task.account_name === oldName) {
+                task.account_name = newName;
+                updatedCount++;
+              }
+            });
+            if (updatedCount > 0) {
+              console.log(`已更新 ${updatedCount} 个任务的账户关联：${oldName} -> ${newName}`);
+            }
+          }
+          this._oldAccountName = null;
+        },
+        getDriveTypeLabel(driveType) {
+          const dt = this.driveTypes.find(d => d.value === driveType);
+          return dt ? dt.label : driveType;
         },
         testPush() {
           this.runScriptNow(1, true);
@@ -1015,6 +1214,32 @@
             parentDir = "/"
           return parentDir;
         },
+        // 综合筛选任务：名称、路径、账户
+        filterTask(task) {
+          // 名称筛选
+          if (this.taskNameFilter && !task.taskname.includes(this.taskNameFilter)) {
+            return false;
+          }
+          // 路径筛选
+          if (this.taskDirSelected && this.getParentDirectory(task.savepath) != this.taskDirSelected) {
+            return false;
+          }
+          // 账户筛选
+          if (this.taskAccountFilter) {
+            if (this.taskAccountFilter === '__auto__') {
+              // 筛选自动选择的任务（account_name 为空）
+              if (task.account_name && task.account_name !== '') {
+                return false;
+              }
+            } else {
+              // 筛选指定账户的任务
+              if (task.account_name !== this.taskAccountFilter) {
+                return false;
+              }
+            }
+          }
+          return true;
+        },
         scrollToX(top = undefined) {
           if (top == undefined)
             top = document.documentElement.scrollHeight
@@ -1115,14 +1340,30 @@
           } else {
             params = { fid: params }
           }
+          // 传递当前任务的账户名称，以便后端使用正确的网盘账户
+          if (this.fileSelect.index !== null && this.formData.tasklist[this.fileSelect.index]) {
+            const task = this.formData.tasklist[this.fileSelect.index];
+            // 优先使用任务配置的账户，其次使用临时检测的账户
+            if (task.account_name) {
+              params.account_name = task.account_name;
+            } else if (this.fileSelect.tempAccountName) {
+              params.account_name = this.fileSelect.tempAccountName;
+            }
+          }
           this.modalLoading = true;
           axios.get('/get_savepath_detail', {
             params: params
           }).then(response => {
-            this.fileSelect.fileList = response.data.data.list;
-            this.sortFileList(this.fileSelect.sortBy, this.fileSelect.sortOrder);
-            if (response.data.data.paths?.length > 0) {
-              this.fileSelect.paths = response.data.data.paths
+            if (response.data.success) {
+              this.fileSelect.fileList = response.data.data.list;
+              this.sortFileList(this.fileSelect.sortBy, this.fileSelect.sortOrder);
+              if (response.data.data.paths?.length > 0) {
+                this.fileSelect.paths = response.data.data.paths
+              }
+              // 保存当前显示的网盘类型
+              this.fileSelect.driveType = response.data.data.drive_type || 'quark';
+            } else {
+              this.fileSelect.error = response.data.data?.error || "获取文件夹列表失败";
             }
             this.modalLoading = false;
           }).catch(error => {
@@ -1140,9 +1381,33 @@
           this.fileSelect.fileList = [];
           this.fileSelect.paths = [];
           this.fileSelect.index = index;
+          
+          const task = this.formData.tasklist[index];
+          // 如果任务没有指定账户，但有分享链接，尝试从链接检测网盘类型并自动选择账户
+          if (!task.account_name && task.shareurl) {
+            const detectedType = this.detectDriveTypeFromUrl(task.shareurl);
+            if (detectedType && this.formData.accounts) {
+              // 查找对应类型的第一个启用账户
+              const matchedAccount = this.formData.accounts.find(
+                acc => acc.enabled && acc.drive_type === detectedType
+              );
+              if (matchedAccount) {
+                // 临时设置账户名用于获取保存路径（不修改任务配置）
+                this.fileSelect.tempAccountName = matchedAccount.name;
+              }
+            }
+          }
+          
           $('#fileSelectModal').modal('toggle');
-          this.formData.tasklist[index].savepath = this.formData.tasklist[index].savepath.replace(/\/+/g, "/");
-          this.getSavepathDetail(this.formData.tasklist[index].savepath);
+          task.savepath = task.savepath.replace(/\/+/g, "/");
+          this.getSavepathDetail(task.savepath);
+        },
+        // 从URL检测网盘类型
+        detectDriveTypeFromUrl(url) {
+          if (!url) return null;
+          if (/pan\.quark\.cn/.test(url)) return 'quark';
+          if (/(?:115|anxia|115cdn)\.com/.test(url)) return '115';
+          return null;
         },
         getShareDetail() {
           this.modalLoading = true;
@@ -1155,7 +1420,12 @@
             if (response.data.success) {
               this.fileSelect.fileList = response.data.data.list;
               this.sortFileList(this.fileSelect.sortBy, this.fileSelect.sortOrder);
-              this.fileSelect.paths = response.data.data.paths;
+              // 使用后端返回的路径（如Quark带完整路径信息）；
+              // 如果后端未返回有效路径（如115），则保留本地维护的路径
+              let backendPaths = response.data.data.paths || [];
+              if (backendPaths.length > 0 && backendPaths.every(p => p.name)) {
+                this.fileSelect.paths = backendPaths;
+              }
               this.fileSelect.stoken = response.data.data.stoken;
             } else {
               this.fileSelect.error = response.data.data.error
@@ -1202,6 +1472,17 @@
         navigateTo(fid, name) {
           dir = { fid: fid, name: name }
           if (this.fileSelect.selectShare) {
+            // 在本地维护路径面包屑（115等不返回路径信息的网盘需要）
+            if (fid == "0" || fid == 0) {
+              this.fileSelect.paths = [];
+            } else {
+              let pathIdx = this.fileSelect.paths.findIndex(item => item.fid === fid || item.fid == fid);
+              if (pathIdx !== -1) {
+                this.fileSelect.paths = this.fileSelect.paths.slice(0, pathIdx + 1);
+              } else {
+                this.fileSelect.paths.push({ fid: fid, name: name });
+              }
+            }
             this.fileSelect.shareurl = this.getShareurl(this.fileSelect.shareurl, dir);
             this.getShareDetail();
           } else {
@@ -1235,8 +1516,11 @@
           $('#fileSelectModal').modal('hide')
         },
         getShareurl(shareurl, dir = {}) {
-          if (dir == {} || dir.fid == 0) {
-            shareurl = shareurl.match(`.*s/[a-z0-9]+(\\?pwd=[^#]+)?`)[0]
+          if (!dir.fid || dir.fid == 0) {
+            // 返回根URL：保留share code + 所有查询参数，去掉 # 及之后的部分
+            // 兼容 Quark (?pwd=xxx) 和 115 (?password=xxx) 两种格式
+            let match = shareurl.match(/.*s\/[a-zA-Z0-9]+(\?[^#]*)?/);
+            shareurl = match ? match[0] : shareurl.split('#')[0];
           } else if (shareurl.includes(dir.fid)) {
             shareurl = shareurl.match(`.*/${dir.fid}[^/]*`)[0]
           } else if (shareurl.includes('#/list/share')) {
