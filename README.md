@@ -63,7 +63,7 @@
 - 其它
   - [x] 每日签到领空间 <sup>[?](https://github.com/Cp0204/quark-auto-save/wiki/使用技巧集锦#每日签到领空间)</sup>
   - [x] 支持多个通知推送渠道 <sup>[?](https://github.com/Cp0204/quark-auto-save/wiki/通知推送服务配置)</sup>
-  - [x] 支持多账号（多账号签到，仅首账号转存）
+  - [x] 支持多账号
 
 ## 部署
 

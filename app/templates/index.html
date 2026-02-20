@@ -21,300 +21,291 @@
 <body>
   <div id="app">
 
-    <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
-      <a class="navbar-brand col-md-3 col-lg-2 mr-0 px-3" href="#"><i class="bi bi-clouds"></i> 网盘自动转存</a>
-      <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-toggle="collapse" data-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false">
-        <span class="navbar-toggler-icon"></span>
-      </button>
+    <!-- Apple Style Top Navigation -->
+    <nav class="apple-navbar">
+      <a class="navbar-brand" href="#"><i class="bi bi-clouds"></i> 网盘自动转存</a>
+      <div class="segmented-control">
+        <button type="button" class="seg-btn" :class="{active: activeTab === 'config'}" @click="changeTab('config')">
+          <i class="bi bi-gear-fill"></i> 系统配置
+        </button>
+        <button type="button" class="seg-btn" :class="{active: activeTab === 'tasklist'}" @click="changeTab('tasklist')">
+          <i class="bi bi-list-task"></i> 任务列表
+        </button>
+      </div>
+      <div class="navbar-actions">
+        <a href="/logout"><i class="bi bi-box-arrow-right"></i> 退出</a>
+      </div>
     </nav>
 
-    <div class="container-fluid">
-      <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
-        <div class="sidebar-sticky pt-3">
-          <ul class="nav flex-column">
-            <li class="nav-item">
-              <a class="nav-link" href="#" :class="{active: activeTab === 'config'}" @click="changeTab('config')">
-                <i class="bi bi-gear-fill"></i> 系统配置
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="#" :class="{active: activeTab === 'tasklist'}" @click="changeTab('tasklist')">
-                <i class="bi bi-list-task"></i> 任务列表
-              </a>
-            </li>
-            <h6 class="sidebar-heading px-3 mt-4 mb-1 text-muted">dashboard</h6>
-            <li class="nav-item">
-              <a class="nav-link" href="/logout">
-                <i class="bi bi-box-arrow-right"></i></i> 退出
-              </a>
-            </li>
-          </ul>
-          <div class="nav-bottom text-center">
-            <p class="position-relative" hidden>
-              <b class="text-success"><i class="bi bi-record-circle mr-1"></i>视频教程</b>
-              <span class="position-absolute qrcode-tutorial">
-                使用夸克扫码查看<br>
-                <img src="./static/img/qrcode_tutorial.png">
-              </span>
-            </p>
-            <p><a target="_blank" href="https://github.com/Cp0204/quark-auto-save/wiki"><i class="bi bi-wechat mr-1"></i>使用交流</a></p>
-            <p><a href="./static/js/qas.addtask.user.js"><i class="bi bi-cloud-plus-fill mr-1"></i>推送任务油猴脚本</a></p>
-            <p><a target="_blank" href="https://github.com/Cp0204/quark-auto-save"><i class="bi bi-github mr-1"></i>quark-auto-save</a></p>
-            <p><span v-html="versionTips"></span></p>
-          </div>
-        </div>
-      </nav>
-
-      <main class="col-md-9 col-lg-10 ml-sm-auto">
+    <div class="main-content">
+      <main>
         <form @submit.prevent="saveConfig" @keydown.enter.prevent>
 
           <div v-if="activeTab === 'config'">
-            <div class="row title">
-              <div class="col-10">
-                <h2><i class="bi bi-cookie"></i> Cookie</h2>
+
+            <!-- Cookie Card -->
+            <div class="config-card">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-cookie"></i>
+                  <h2>Cookie</h2>
+                </div>
+                <div class="card-actions">
+                  <button type="button" class="btn btn-outline-primary btn-sm" @click="addCookie()"><i class="bi bi-plus"></i></button>
+                </div>
               </div>
-              <div class="col-2 text-right">
-                <button type="button" class="btn btn-outline-primary" @click="addCookie()">+</button>
-              </div>
-            </div>
-            <p>1. 所有账号执行签到，纯<a class="" href="https://github.com/Cp0204/quark-auto-save/wiki/使用技巧集锦#每日签到领空间">签到</a>只需移动端参数即可！</p>
-            <p>2. 仅第一个账号执行转存，请自行确认顺序。<b>最好是手机验证码<a target="_blank" href="https://pan.quark.cn/">登录</a>，CK比较完整！</b>如需签到参数附在CK后面。</p>
-            <div v-for="(value, index) in formData.cookie" :key="index" class="input-group mb-2">
-              <input type="text" v-model="formData.cookie[index]" class="form-control" placeholder="打开 pan.quark.com 按 F12 抓取">
-              <div class="input-group-append">
-                <button type="button" class="btn btn-outline-danger" @click="removeCookie(index)">-</button>
+              <div class="config-card-body">
+                <p>1. 所有账号执行签到，纯<a href="https://github.com/Cp0204/quark-auto-save/wiki/使用技巧集锦#每日签到领空间">签到</a>只需移动端参数即可！</p>
+                <p>2. 仅第一个账号执行转存，请自行确认顺序。<b>最好是手机验证码<a target="_blank" href="https://pan.quark.cn/">登录</a>，CK比较完整！</b>如需签到参数附在CK后面。</p>
+                <div v-for="(value, index) in formData.cookie" :key="index" class="input-group mb-2">
+                  <input type="text" v-model="formData.cookie[index]" class="form-control" placeholder="打开 pan.quark.com 按 F12 抓取">
+                  <div class="input-group-append">
+                    <button type="button" class="btn btn-outline-danger btn-sm" @click="removeCookie(index)"><i class="bi bi-dash"></i></button>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <!-- 多网盘账户管理 -->
-            <div class="row title">
-              <div class="col-10">
-                <h2><i class="bi bi-people"></i> 多网盘账户</h2>
-                <small class="text-muted">配置多个网盘账户，支持夸克、115等网盘的自动转存</small>
+            <!-- 多网盘账户 Card -->
+            <div class="config-card">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-people"></i>
+                  <h2>多网盘账户</h2>
+                </div>
+                <div class="card-actions">
+                  <button type="button" class="btn btn-outline-primary btn-sm" @click="addAccount()"><i class="bi bi-plus"></i></button>
+                </div>
               </div>
-              <div class="col-2 text-right">
-                <button type="button" class="btn btn-outline-primary" @click="addAccount()">+</button>
-              </div>
-            </div>
-            <div v-if="formData.accounts && formData.accounts.length === 0" class="alert alert-info">
-              <i class="bi bi-info-circle"></i> 暂无多网盘账户配置。如需使用多网盘功能，请点击 + 添加账户。
-              <br><small>提示：如果只使用夸克网盘，可以继续使用上方的 Cookie 配置，无需配置此项。</small>
-            </div>
-            <div v-for="(account, index) in formData.accounts" :key="'account_'+index" class="card mb-2">
-              <div class="card-body p-2">
-                <div class="row align-items-center">
-                  <div class="col-md-3">
-                    <div class="input-group input-group-sm">
-                      <div class="input-group-prepend">
-                        <span class="input-group-text"><i class="bi bi-tag"></i></span>
+              <div class="config-card-body">
+                <p>配置多个网盘账户，支持夸克、115等网盘的自动转存</p>
+                <div v-if="formData.accounts && formData.accounts.length === 0" class="alert alert-info">
+                  <i class="bi bi-info-circle"></i> 暂无多网盘账户配置。如需使用多网盘功能，请点击 + 添加账户。
+                  <br><small>提示：如果只使用夸克网盘，可以继续使用上方的 Cookie 配置，无需配置此项。</small>
+                </div>
+                <div v-for="(account, index) in formData.accounts" :key="'account_'+index" class="card mb-2">
+                  <div class="card-body p-2">
+                    <div class="row align-items-center">
+                      <div class="col-md-3">
+                        <div class="input-group input-group-sm">
+                          <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="bi bi-tag"></i></span>
+                          </div>
+                          <input type="text" v-model="account.name" class="form-control" placeholder="账户名称" 
+                                 @focus="rememberAccountName(index, account.name)" 
+                                 @blur="updateTasksAccountName(index, account.name)">
+                        </div>
                       </div>
-                      <input type="text" v-model="account.name" class="form-control" placeholder="账户名称" 
-                             @focus="rememberAccountName(index, account.name)" 
-                             @blur="updateTasksAccountName(index, account.name)">
-                    </div>
-                  </div>
-                  <div class="col-md-2">
-                    <select v-model="account.drive_type" class="form-control form-control-sm">
-                      <option v-for="dt in driveTypes" :key="dt.value" :value="dt.value">
-                        {{ dt.label }}
-                      </option>
-                    </select>
-                  </div>
-                  <div class="col-md-5">
-                    <input type="text" v-model="account.cookie" class="form-control form-control-sm" placeholder="Cookie">
-                  </div>
-                  <div class="col-md-2 text-right">
-                    <div class="btn-group btn-group-sm">
-                      <button type="button" class="btn" :class="account.enabled ? 'btn-success' : 'btn-outline-secondary'" @click="account.enabled = !account.enabled" :title="account.enabled ? '已启用' : '已禁用'">
-                        <i class="bi" :class="account.enabled ? 'bi-check-circle' : 'bi-x-circle'"></i>
-                      </button>
-                      <button type="button" class="btn" :class="account.default ? 'btn-warning' : 'btn-outline-secondary'" @click="setDefaultAccount(index)" title="设为默认">
-                        <i class="bi bi-star" :class="account.default ? 'bi-star-fill' : ''"></i>
-                      </button>
-                      <button type="button" class="btn btn-outline-danger" @click="removeAccount(index)">
-                        <i class="bi bi-trash"></i>
-                      </button>
+                      <div class="col-md-2">
+                        <select v-model="account.drive_type" class="form-control form-control-sm">
+                          <option v-for="dt in driveTypes" :key="dt.value" :value="dt.value">
+                            {{ dt.label }}
+                          </option>
+                        </select>
+                      </div>
+                      <div class="col-md-5">
+                        <input type="text" v-model="account.cookie" class="form-control form-control-sm" placeholder="Cookie">
+                      </div>
+                      <div class="col-md-2 text-right">
+                        <div class="btn-group btn-group-sm">
+                          <button type="button" class="btn" :class="account.enabled ? 'btn-success' : 'btn-outline-secondary'" @click="account.enabled = !account.enabled" :title="account.enabled ? '已启用' : '已禁用'">
+                            <i class="bi" :class="account.enabled ? 'bi-check-circle' : 'bi-x-circle'"></i>
+                          </button>
+                          <button type="button" class="btn" :class="account.default ? 'btn-warning' : 'btn-outline-secondary'" @click="setDefaultAccount(index)" title="设为默认">
+                            <i class="bi bi-star" :class="account.default ? 'bi-star-fill' : ''"></i>
+                          </button>
+                          <button type="button" class="btn btn-outline-danger" @click="removeAccount(index)">
+                            <i class="bi bi-trash"></i>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="row title">
-              <div class="col">
-                <h2 style="display: inline-block;"><i class="bi bi-clock"></i> 定时规则</h2>
-                <span class="badge badge-pill badge-light">
-                  <a target="_blank" href="https://tool.lu/crontab/" title="CRON时间计算器">?</a>
-                </span>
+            <!-- 定时规则 Card -->
+            <div class="config-card">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-clock"></i>
+                  <h2>定时规则</h2>
+                  <a class="help-link" target="_blank" href="https://tool.lu/crontab/" title="CRON时间计算器">?</a>
+                </div>
               </div>
-            </div>
-            <div class="input-group mb-2">
-              <div class="input-group-prepend">
-                <span class="input-group-text">Crontab</span>
-              </div>
-              <input type="text" v-model="formData.crontab" class="form-control" placeholder="必填">
-            </div>
-
-            <div class="row title" title="通知推送，支持多个渠道，见Wiki">
-              <div class="col-8">
-                <h2 style="display: inline-block;"><i class="bi bi-bell"></i> 通知</h2>
-                <span class="badge badge-pill badge-light">
-                  <a href="https://github.com/Cp0204/quark-auto-save/wiki/通知推送服务配置" target="_blank">?</a>
-                </span>
-              </div>
-              <div class="col-4 text-right">
-                <button type="button" class="btn btn-success" title="通知推送测试" @click="testPush()"><i class="bi bi-lightning"></i></button>
-                <button type="button" class="btn btn-outline-primary" @click="addPush()">+</button>
-              </div>
-            </div>
-            <div v-for="(value, key) in formData.push_config" :key="key" class="input-group mb-2">
-              <div class="input-group-prepend">
-                <span class="input-group-text" v-html="key"></span>
-              </div>
-              <div class="input-group-prepend" v-if="(key == 'DEER_KEY' || key == 'PUSH_KEY')">
-                <a type="button" class="btn btn-warning" target="_blank" href="https://sct.ftqq.com/r/13249" title="Server酱推荐计划"><i class="bi bi-award"></i></a>
-              </div>
-              <input type="text" v-model="formData.push_config[key]" class="form-control">
-              <div class="input-group-append">
-                <button type="button" class="btn btn-outline-danger" @click="removePush(key)">-</button>
+              <div class="config-card-body">
+                <div class="input-group mb-2">
+                  <div class="input-group-prepend">
+                    <span class="input-group-text">Crontab</span>
+                  </div>
+                  <input type="text" v-model="formData.crontab" class="form-control" placeholder="必填">
+                </div>
               </div>
             </div>
 
-            <div class="row title" v-if="Object.keys(getAvailablePlugins(formData.plugins)).length" title="各插件的配置选项，具体键值由插件定义，见Wiki">
-              <div class="col">
-                <h2 style="display: inline-block;"><i class="bi bi-plug"></i> 插件</h2>
-                <span class="badge badge-pill badge-light">
-                  <a href="https://github.com/Cp0204/quark-auto-save/wiki/插件配置" target="_blank">?</a>
-                </span>
+            <!-- 通知 Card -->
+            <div class="config-card">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-bell"></i>
+                  <h2>通知</h2>
+                  <a class="help-link" href="https://github.com/Cp0204/quark-auto-save/wiki/通知推送服务配置" target="_blank">?</a>
+                </div>
+                <div class="card-actions">
+                  <button type="button" class="btn btn-success btn-sm" title="通知推送测试" @click="testPush()"><i class="bi bi-lightning"></i></button>
+                  <button type="button" class="btn btn-outline-primary btn-sm" @click="addPush()"><i class="bi bi-plus"></i></button>
+                </div>
+              </div>
+              <div class="config-card-body">
+                <div v-for="(value, key) in formData.push_config" :key="key" class="input-group mb-2">
+                  <div class="input-group-prepend">
+                    <span class="input-group-text" v-html="key"></span>
+                  </div>
+                  <div class="input-group-prepend" v-if="(key == 'DEER_KEY' || key == 'PUSH_KEY')">
+                    <a type="button" class="btn btn-warning btn-sm" target="_blank" href="https://sct.ftqq.com/r/13249" title="Server酱推荐计划"><i class="bi bi-award"></i></a>
+                  </div>
+                  <input type="text" v-model="formData.push_config[key]" class="form-control">
+                  <div class="input-group-append">
+                    <button type="button" class="btn btn-outline-danger btn-sm" @click="removePush(key)"><i class="bi bi-dash"></i></button>
+                  </div>
+                </div>
               </div>
             </div>
-            <div v-for="(plugin, pluginName) in getAvailablePlugins(formData.plugins)" :key="pluginName">
-              <div class="form-group row mb-0" style="display:flex; align-items:center;">
-                <div data-toggle="collapse" :data-target="'#collapse_'+pluginName" aria-expanded="true" :aria-controls="'collapse_'+pluginName">
-                  <div class="btn btn-block text-left">
+
+            <!-- 插件 Card -->
+            <div class="config-card" v-if="Object.keys(getAvailablePlugins(formData.plugins)).length">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-plug"></i>
+                  <h2>插件</h2>
+                  <a class="help-link" href="https://github.com/Cp0204/quark-auto-save/wiki/插件配置" target="_blank">?</a>
+                </div>
+              </div>
+              <div class="config-card-body">
+                <div v-for="(plugin, pluginName) in getAvailablePlugins(formData.plugins)" :key="pluginName">
+                  <div class="collapse-toggle" data-toggle="collapse" :data-target="'#collapse_'+pluginName" aria-expanded="true" :aria-controls="'collapse_'+pluginName">
                     <i class="bi bi-caret-right-fill"></i> <span v-html="`${pluginName}`"></span>
                   </div>
-                </div>
-              </div>
-              <div class="collapse ml-3" :id="'collapse_'+pluginName">
-                <div v-for="(value, key) in plugin" :key="key" class="form-group row">
-                  <label class="col-sm-2 col-form-label" v-html="key"></label>
-                  <div class="col-sm-10">
-                    <input type="text" v-model="formData.plugins[pluginName][key]" class="form-control">
+                  <div class="collapse ml-3" :id="'collapse_'+pluginName">
+                    <div v-for="(value, key) in plugin" :key="key" class="form-group row">
+                      <label class="col-sm-2 col-form-label" v-html="key"></label>
+                      <div class="col-sm-10">
+                        <input type="text" v-model="formData.plugins[pluginName][key]" class="form-control">
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="row title" title="预定义的正则匹配规则，在任务列表中可直接点击使用">
-              <div class="col-10">
-                <h2 style="display: inline-block;"><i class="bi bi-magic"></i> 魔法匹配</h2>
-                <span class="badge badge-pill badge-light">
-                  <a href="https://github.com/Cp0204/quark-auto-save/wiki/正则处理教程#21-魔法匹配" target="_blank">?</a>
-                </span>
-              </div>
-              <div class="col-2 text-right">
-                <button type="button" class="btn btn-outline-primary" @click="addMagicRegex()">+</button>
-              </div>
-            </div>
-            <div v-for="(value, key) in formData.magic_regex" :key="key" class="form-group mb-2">
-              <div class="input-group">
-                <div class="input-group-prepend">
-                  <span class="input-group-text">魔法名</span>
+            <!-- 魔法匹配 Card -->
+            <div class="config-card">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-magic"></i>
+                  <h2>魔法匹配</h2>
+                  <a class="help-link" href="https://github.com/Cp0204/quark-auto-save/wiki/正则处理教程#21-魔法匹配" target="_blank">?</a>
                 </div>
-                <input type="text" :data-oldkey="key" v-model="key" class="form-control" @change="updateMagicRegexKey($event.target.dataset.oldkey, $event.target.value)" placeholder="自定义名称">
-                <div class="input-group-prepend">
-                  <span class="input-group-text">正则处理</span>
+                <div class="card-actions">
+                  <button type="button" class="btn btn-outline-primary btn-sm" @click="addMagicRegex()"><i class="bi bi-plus"></i></button>
                 </div>
-                <input type="text" v-model="value.pattern" class="form-control" placeholder="匹配表达式">
-                <input type="text" v-model="value.replace" class="form-control" placeholder="替换表达式">
-                <div class="input-group-append">
-                  <button type="button" class="btn btn-outline-danger" @click="removeMagicRegex(key)">-</button>
+              </div>
+              <div class="config-card-body">
+                <div v-for="(value, key) in formData.magic_regex" :key="key" class="form-group mb-2">
+                  <div class="input-group">
+                    <div class="input-group-prepend">
+                      <span class="input-group-text">魔法名</span>
+                    </div>
+                    <input type="text" :data-oldkey="key" v-model="key" class="form-control" @change="updateMagicRegexKey($event.target.dataset.oldkey, $event.target.value)" placeholder="自定义名称">
+                    <div class="input-group-prepend">
+                      <span class="input-group-text">正则处理</span>
+                    </div>
+                    <input type="text" v-model="value.pattern" class="form-control" placeholder="匹配表达式">
+                    <input type="text" v-model="value.replace" class="form-control" placeholder="替换表达式">
+                    <div class="input-group-append">
+                      <button type="button" class="btn btn-outline-danger btn-sm" @click="removeMagicRegex(key)"><i class="bi bi-dash"></i></button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
 
-            <div class="row title" title="API接口，用以第三方添加任务等操作，见Wiki">
-              <div class="col-10">
-                <h2 style="display: inline-block;"><i class="bi bi-link-45deg"></i> API</h2>
-                <span class="badge badge-pill badge-light">
-                  <a href="https://github.com/Cp0204/quark-auto-save/wiki/API接口" target="_blank">?</a>
-                </span>
+            <!-- API Card -->
+            <div class="config-card">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-link-45deg"></i>
+                  <h2>API</h2>
+                  <a class="help-link" href="https://github.com/Cp0204/quark-auto-save/wiki/API接口" target="_blank">?</a>
+                </div>
               </div>
-            </div>
-            <div class="input-group">
-              <div class="input-group-prepend">
-                <span class="input-group-text">Token</span>
+              <div class="config-card-body">
+                <div class="input-group">
+                  <div class="input-group-prepend">
+                    <span class="input-group-text">Token</span>
+                  </div>
+                  <input type="text" v-model="formData.api_token" class="form-control" disabled>
+                </div>
               </div>
-              <input type="text" v-model="formData.api_token" class="form-control" style="background-color:white;" disabled>
             </div>
 
-            <div class="row title" title="资源搜索服务配置，用于任务名称智能搜索">
-              <div class="col-10">
-                <h2 style="display: inline-block;"><i class="bi bi-search"></i> 资源搜索</h2>
+            <!-- 资源搜索 Card -->
+            <div class="config-card">
+              <div class="config-card-header">
+                <div class="card-title">
+                  <i class="bi bi-search"></i>
+                  <h2>资源搜索</h2>
+                </div>
               </div>
-            </div>
-            <div class="form-group row mb-0" style="display:flex; align-items:center;">
-              <div data-toggle="collapse" data-target="#collapse_net" aria-expanded="true" aria-controls="collapse_net">
-                <div class="btn btn-block text-left">
+              <div class="config-card-body">
+                <div class="collapse-toggle" data-toggle="collapse" data-target="#collapse_net" aria-expanded="true" aria-controls="collapse_net">
                   <i class="bi bi-caret-right-fill"></i> 网络公开搜索
                 </div>
-              </div>
-            </div>
-            <div class="collapse show ml-3" id="collapse_net">
-              <div class="form-group row">
-                <label class="col-sm-2 col-form-label">启用</label>
-                <div class="col-sm-10 d-flex align-items-center">
-                  <input type="checkbox" class="form-check-input" v-model="formData.source.net.enable" placeholder="是否启用网络公开搜索，默认启用">
+                <div class="collapse show ml-3" id="collapse_net">
+                  <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">启用</label>
+                    <div class="col-sm-10 d-flex align-items-center">
+                      <input type="checkbox" class="form-check-input" v-model="formData.source.net.enable" placeholder="是否启用网络公开搜索，默认启用">
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div class="form-group row mb-0" style="display:flex; align-items:center;">
-              <div data-toggle="collapse" data-target="#collapse_cloudsaver" aria-expanded="true" aria-controls="collapse_cloudsaver">
-                <div class="btn btn-block text-left">
+                <div class="collapse-toggle" data-toggle="collapse" data-target="#collapse_cloudsaver" aria-expanded="true" aria-controls="collapse_cloudsaver">
                   <i class="bi bi-caret-right-fill"></i> CloudSaver
-                  <span class="badge badge-pill badge-light">
-                    <a href="https://github.com/Cp0204/quark-auto-save/wiki/CloudSaver搜索源" target="_blank">?</a>
-                  </span>
+                  <a class="help-link ml-2" href="https://github.com/Cp0204/quark-auto-save/wiki/CloudSaver搜索源" target="_blank">?</a>
                 </div>
-              </div>
-            </div>
-            <div class="collapse show ml-3" id="collapse_cloudsaver">
-              <div class="form-group row">
-                <label class="col-sm-2 col-form-label">服务器</label>
-                <div class="col-sm-10">
-                  <input type="text" v-model="formData.source.cloudsaver.server" class="form-control" placeholder="资源搜索服务器地址，如 http://172.17.0.1:8008">
+                <div class="collapse show ml-3" id="collapse_cloudsaver">
+                  <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">服务器</label>
+                    <div class="col-sm-10">
+                      <input type="text" v-model="formData.source.cloudsaver.server" class="form-control" placeholder="资源搜索服务器地址，如 http://172.17.0.1:8008">
+                    </div>
+                  </div>
+                  <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">用户名</label>
+                    <div class="col-sm-10">
+                      <input type="text" v-model="formData.source.cloudsaver.username" class="form-control" placeholder="用户名">
+                    </div>
+                  </div>
+                  <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">密码</label>
+                    <div class="col-sm-10">
+                      <input type="password" v-model="formData.source.cloudsaver.password" class="form-control" placeholder="密码">
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div class="form-group row">
-                <label class="col-sm-2 col-form-label">用户名</label>
-                <div class="col-sm-10">
-                  <input type="text" v-model="formData.source.cloudsaver.username" class="form-control" placeholder="用户名">
-                </div>
-              </div>
-              <div class="form-group row">
-                <label class="col-sm-2 col-form-label">密码</label>
-                <div class="col-sm-10">
-                  <input type="password" v-model="formData.source.cloudsaver.password" class="form-control" placeholder="密码">
-                </div>
-              </div>
-            </div>
-            <div class="form-group row mb-0" style="display:flex; align-items:center;">
-              <div data-toggle="collapse" data-target="#collapse_pansou" aria-expanded="true" aria-controls="collapse_pansou">
-                <div class="btn btn-block text-left">
+                <div class="collapse-toggle" data-toggle="collapse" data-target="#collapse_pansou" aria-expanded="true" aria-controls="collapse_pansou">
                   <i class="bi bi-caret-right-fill"></i> PanSou
-                  <span class="badge badge-pill badge-light">
-                    <a href="https://github.com/fish2018/pansou" target="_blank">?</a>
-                  </span>
+                  <a class="help-link ml-2" href="https://github.com/fish2018/pansou" target="_blank">?</a>
                 </div>
-              </div>
-            </div>
-            <div class="collapse show ml-3" id="collapse_pansou">
-              <div class="form-group row">
-                <label class="col-sm-2 col-form-label">服务器</label>
-                <div class="col-sm-10">
-                  <input type="text" v-model="formData.source.pansou.server" class="form-control" placeholder="资源搜索服务器地址，如 https://so.252035.xyz">
+                <div class="collapse show ml-3" id="collapse_pansou">
+                  <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">服务器</label>
+                    <div class="col-sm-10">
+                      <input type="text" v-model="formData.source.pansou.server" class="form-control" placeholder="资源搜索服务器地址，如 https://so.252035.xyz">
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -322,41 +313,33 @@
           </div>
 
           <div v-if="activeTab === 'tasklist'">
-            <div class="row title">
-              <div class="col">
-                <h2>任务列表</h2>
-              </div>
-            </div>
-            <hr>
-            <div class="row">
-              <div class="col-lg-4 col-md-12 mb-2">
-                <div class="row">
-                  <label class="col-form-label col-md-3">名称筛选</label>
-                  <div class="input-group col-md-9">
+
+            <!-- Filter Bar -->
+            <div class="filter-bar">
+              <div class="row">
+                <div class="col-lg-4 col-md-12 mb-2">
+                  <label>名称筛选</label>
+                  <div class="input-group">
                     <input type="text" class="form-control" v-model="taskNameFilter" placeholder="名称 筛选/搜索">
                     <div class="input-group-append">
-                      <button type="button" class="btn btn-outline-secondary" @click="clearData('taskNameFilter')"><i class="bi bi-x-lg"></i></button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" @click="clearData('taskNameFilter')"><i class="bi bi-x-lg"></i></button>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div class="col-lg-4 col-md-12 mb-2">
-                <div class="row">
-                  <label class="col-form-label col-md-3">路径筛选</label>
-                  <div class="input-group col-md-9">
+                <div class="col-lg-4 col-md-12 mb-2">
+                  <label>路径筛选</label>
+                  <div class="input-group">
                     <select class="form-control" v-model="taskDirSelected">
                       <option v-for="(dir, index) in taskDirs" :value="dir" v-html="dir"></option>
                     </select>
                     <div class="input-group-append">
-                      <button type="button" class="btn btn-outline-secondary" @click="clearData('taskDirSelected')"><i class="bi bi-x-lg"></i></button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" @click="clearData('taskDirSelected')"><i class="bi bi-x-lg"></i></button>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div class="col-lg-4 col-md-12 mb-2" v-if="formData.accounts && formData.accounts.length > 0">
-                <div class="row">
-                  <label class="col-form-label col-md-3">账户筛选</label>
-                  <div class="input-group col-md-9">
+                <div class="col-lg-4 col-md-12 mb-2" v-if="formData.accounts && formData.accounts.length > 0">
+                  <label>账户筛选</label>
+                  <div class="input-group">
                     <select class="form-control" v-model="taskAccountFilter">
                       <option value="">全部账户</option>
                       <option value="__auto__">自动选择</option>
@@ -365,36 +348,38 @@
                       </option>
                     </select>
                     <div class="input-group-append">
-                      <button type="button" class="btn btn-outline-secondary" @click="clearData('taskAccountFilter')"><i class="bi bi-x-lg"></i></button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" @click="clearData('taskAccountFilter')"><i class="bi bi-x-lg"></i></button>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            <div v-for="(task, index) in formData.tasklist" :key="index" class="task mb-3">
+
+            <!-- Task Cards -->
+            <div v-for="(task, index) in formData.tasklist" :key="index">
               <template v-if="filterTask(task)">
-                <hr>
-                <div class="form-group row" style="align-items:center">
-                  <div class="col pl-0" data-toggle="collapse" :data-target="'#collapse_'+index" aria-expanded="true" :aria-controls="'collapse_'+index">
-                    <div class="btn btn-block text-left">
-                      <i class="bi bi-caret-right-fill"></i> #<span v-html="`${index+1}: ${task.taskname}`"></span>
-                      <!-- 显示当前使用的网盘账户标签 -->
-                      <span v-if="task.account_name" class="badge badge-info ml-2" :title="'使用账户: ' + task.account_name">
+                <div class="task-card">
+                  <div class="task-card-header" data-toggle="collapse" :data-target="'#collapse_'+index" aria-expanded="false" :aria-controls="'collapse_'+index">
+                    <div class="task-info">
+                      <span class="collapse-arrow"><i class="bi bi-caret-right-fill"></i></span>
+                      <span class="task-number">#{{ index+1 }}</span>
+                      <span class="task-name" v-html="task.taskname"></span>
+                      <span v-if="task.account_name" class="badge badge-info" :title="'使用账户: ' + task.account_name">
                         <i class="bi bi-person-fill"></i> {{ task.account_name }}
                       </span>
-                      <span v-else-if="formData.accounts && formData.accounts.length > 0" class="badge badge-secondary ml-2" title="自动选择账户">
+                      <span v-else-if="formData.accounts && formData.accounts.length > 0" class="badge badge-secondary" title="自动选择账户">
                         <i class="bi bi-person"></i> 自动
                       </span>
                     </div>
+                    <div class="task-actions" @click.stop>
+                      <button type="button" class="btn btn-outline-primary btn-sm" @click="copyTaskToClipboard(index)" title="复制任务参数到粘贴板"><i class="bi bi-clipboard-check-fill"></i></button>
+                      <button class="btn btn-warning btn-sm" v-if="task.shareurl_ban" :title="task.shareurl_ban" disabled><i class="bi bi-exclamation-triangle-fill"></i></button>
+                      <button type="button" class="btn btn-outline-primary btn-sm" @click="runScriptNow(index)" title="运行此任务" v-else><i class="bi bi-play-fill"></i></button>
+                      <button type="button" class="btn btn-outline-danger btn-sm" @click="removeTask(index)" title="删除此任务"><i class="bi bi-trash3-fill"></i></button>
+                    </div>
                   </div>
-                  <div class="col-auto">
-                    <button type="button" class="btn btn-outline-primary btn-sm" @click="copyTaskToClipboard(index)" title="复制任务参数到粘贴板"><i class=" bi bi-clipboard-check-fill"></i></button>
-                    <button class="btn btn-warning btn-sm" v-if="task.shareurl_ban" :title="task.shareurl_ban" disabled><i class="bi bi-exclamation-triangle-fill"></i></button>
-                    <button type="button" class="btn btn-outline-primary btn-sm" @click="runScriptNow(index)" title="运行此任务" v-else><i class="bi bi-play-fill"></i></button>
-                    <button type="button" class="btn btn-outline-danger btn-sm" @click="removeTask(index)" title="删除此任务"><i class="bi bi-trash3-fill"></i></button>
-                  </div>
-                </div>
-                <div class="collapse ml-3" :id="'collapse_'+index">
+                  <div class="collapse" :id="'collapse_'+index">
+                    <div class="task-card-body">
                   <div class="alert alert-warning" role="alert" v-if="task.shareurl_ban" v-html="task.shareurl_ban"></div>
                   <div class="form-group row">
                     <label class="col-sm-2 col-form-label">任务名称</label>
@@ -558,26 +543,41 @@
                       <v-jsoneditor v-model="task.addition" :options="{mode:'tree'}" :plus="false" height="180px"></v-jsoneditor>
                     </div>
                   </div>
+                    </div>
+                  </div>
                 </div>
               </template>
             </div>
-            <div class="row mt-5">
-              <div class="col-sm-12 text-center">
-                <div class="btn-group" role="group" aria-label="任务操作">
-                  <button type="button" class="btn btn-primary" @click="addTask()"><i class="bi bi-plus"></i> 增加任务</button>
-                  <button type="button" class="btn btn-primary" @click="addTaskForClipboard()" title="从粘贴板导入"><i class="bi bi-clipboard-plus"></i></button>
-                </div>
+
+            <!-- Add Task Area -->
+            <div class="task-add-area">
+              <div class="btn-group" role="group" aria-label="任务操作">
+                <button type="button" class="btn btn-primary" @click="addTask()"><i class="bi bi-plus"></i> 增加任务</button>
+                <button type="button" class="btn btn-primary" @click="addTaskForClipboard()" title="从粘贴板导入"><i class="bi bi-clipboard-plus"></i></button>
               </div>
             </div>
           </div>
 
+          <!-- Floating Action Bar -->
           <div class="bottom-buttons">
-            <button class="btn btn-success" data-toggle="tooltip" data-placement="top" title="保存 CTRL+S"><i class="bi bi-floppy2-fill"></i></button>
-            <button type="button" class="btn btn-primary" data-toggle="tooltip" data-placement="top" title="运行 CTRL+R" @click="runScriptNow()"><i class="bi bi-play-fill"></i></button>
-            <button type="button" class="btn btn-info" data-toggle="tooltip" data-placement="top" title="单击回顶，双击到底" @click="scrollToX(0)" @dblclick="scrollToX()"><i class="bi bi-chevron-bar-up"></i></button>
+            <button class="btn-save" data-toggle="tooltip" data-placement="top" title="保存 CTRL+S" @click="saveConfig()"><i class="bi bi-floppy2-fill"></i></button>
+            <div class="action-separator"></div>
+            <button class="btn-run" data-toggle="tooltip" data-placement="top" title="运行 CTRL+R" @click="runScriptNow()"><i class="bi bi-play-fill"></i></button>
+            <div class="action-separator"></div>
+            <button class="btn-scroll" data-toggle="tooltip" data-placement="top" title="单击回顶，双击到底" @click="scrollToX(0)" @dblclick="scrollToX()"><i class="bi bi-chevron-bar-up"></i></button>
           </div>
         </form>
       </main>
+
+      <!-- Page Footer -->
+      <footer class="page-footer">
+        <p>
+          <a target="_blank" href="https://github.com/Cp0204/quark-auto-save/wiki"><i class="bi bi-wechat"></i> 使用交流</a>
+          <a href="./static/js/qas.addtask.user.js"><i class="bi bi-cloud-plus-fill"></i> 油猴脚本</a>
+          <a target="_blank" href="https://github.com/Cp0204/quark-auto-save"><i class="bi bi-github"></i> GitHub</a>
+        </p>
+        <p><span v-html="versionTips"></span></p>
+      </footer>
     </div>
 
     <!-- 模态框 运行日志 -->
@@ -857,9 +857,6 @@
       methods: {
         changeTab(tab) {
           this.activeTab = tab;
-          if (window.innerWidth <= 768) {
-            $('#sidebarMenu').collapse('toggle')
-          }
         },
         checkNewVersion() {
           this.versionTips = this.version;
