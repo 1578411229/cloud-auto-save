@@ -2,9 +2,9 @@
 
 ![quark-logo](img/icon.png)
 
-# 夸克网盘自动转存
+# 网盘自动转存
 
-夸克网盘签到、自动转存、命名整理、发推送提醒和刷新媒体库一条龙。
+网盘签到、自动转存、命名整理、发推送提醒和刷新媒体库一条龙。
 
 对于一些持续更新的资源，隔段时间去转存十分麻烦。
 
@@ -73,7 +73,7 @@ Docker 部署提供 WebUI 进行管理配置，部署命令：
 
 ```shell
 docker run -d \
-  --name quark-auto-save \
+  --name cloud-auto-save \
   -p 5005:5005 \ # 映射端口，:前的可以改，即部署后访问的端口，:后的不可改
   -e WEBUI_USERNAME=admin \
   -e WEBUI_PASSWORD=admin123 \
@@ -81,7 +81,7 @@ docker run -d \
   -v ./quark-auto-save/media:/media \ # 可选，模块alist_strm_gen生成strm使用
   --network bridge \
   --restart unless-stopped \
-  cp0204/quark-auto-save:latest
+  1578411229/cloud-auto-save:latest
   # registry.cn-shenzhen.aliyuncs.com/cp0204/quark-auto-save:latest # 国内镜像地址
 ```
 
@@ -91,8 +91,8 @@ docker-compose.yml
 name: quark-auto-save
 services:
   quark-auto-save:
-    image: cp0204/quark-auto-save:latest
-    container_name: quark-auto-save
+    image: 1578411229/cloud-auto-save:latest
+    container_name: cloud-auto-save
     network_mode: bridge
     ports:
       - 5005:5005
@@ -101,8 +101,8 @@ services:
       WEBUI_USERNAME: "admin"
       WEBUI_PASSWORD: "admin123"
     volumes:
-      - ./quark-auto-save/config:/app/config
-      - ./quark-auto-save/media:/media
+      - ./cloud-auto-save/config:/app/config
+      - ./cloud-auto-save/media:/media
 ```
 
 管理地址：http://yourhost:5005
@@ -118,7 +118,7 @@ services:
 #### 一键更新
 
 ```shell
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower -cR quark-auto-save
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower -cR cloud-auto-save
 ```
 
 <details open>
