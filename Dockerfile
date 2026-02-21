@@ -1,5 +1,5 @@
 # 使用官方 Python 镜像作为基础镜像
-FROM python:3.12-alpine
+FROM python:3.10.19-alpine
 
 #构建版本
 ARG BUILD_SHA
@@ -14,7 +14,9 @@ WORKDIR /app
 COPY . /app
 
 # 安装依赖
-RUN pip install --no-cache-dir -r requirements.txt && \
+RUN apk update && \
+    apk add --no-cache gcc musl-dev python3-dev libffi-dev openssl-dev && \
+    pip install --no-cache-dir -r requirements.txt && \
     echo "{\"BUILD_SHA\":\"$BUILD_SHA\", \"BUILD_TAG\":\"$BUILD_TAG\"}" > build.json && \
     python ./app/_clean_plugins.py && \
     rm ./app/_clean_plugins.py
