@@ -738,7 +738,11 @@
         weekdays: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
         driveTypes: [
           { value: 'quark', label: '夸克网盘', icon: 'bi-cloud' },
-          { value: '115', label: '115网盘', icon: 'bi-hdd-network' }
+          { value: '115', label: '115网盘', icon: 'bi-hdd-network' },
+          { value: 'baidu', label: '百度网盘', icon: 'bi-cloud-fill' },
+          { value: 'xunlei', label: '迅雷网盘', icon: 'bi-lightning-fill' },
+          { value: 'aliyun', label: '阿里云盘', icon: 'bi-cloud-arrow-up' },
+          { value: 'uc', label: 'UC网盘', icon: 'bi-folder' }
         ],
         formData: {
           cookie: [],
@@ -1404,6 +1408,10 @@
           if (!url) return null;
           if (/pan\.quark\.cn/.test(url)) return 'quark';
           if (/(?:115|anxia|115cdn)\.com/.test(url)) return '115';
+          if (/pan\.baidu\.com/.test(url)) return 'baidu';
+          if (/pan\.xunlei\.com/.test(url)) return 'xunlei';
+          if (/(?:alipan|aliyundrive)\.com/.test(url)) return 'aliyun';
+          if (/drive\.uc\.cn/.test(url)) return 'uc';
           return null;
         },
         getShareDetail() {

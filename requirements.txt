@@ -3,3 +3,5 @@ apscheduler
 requests
 treelib
 natsort
+baidupcs-py
+aligo

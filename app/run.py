@@ -35,7 +35,11 @@ from quark_auto_save import Quark, Config, MagicRename
 
 # 尝试导入多网盘支持模块
 try:
-    from adapters import AdapterFactory, AccountManager, QuarkAdapter, Cloud115Adapter
+    from adapters import (
+        AdapterFactory, AccountManager, 
+        QuarkAdapter, Cloud115Adapter,
+        BaiduAdapter, XunleiAdapter, AliyunAdapter, UCAdapter
+    )
     MULTI_DRIVE_SUPPORT = True
 except ImportError:
     MULTI_DRIVE_SUPPORT = False
@@ -171,14 +175,13 @@ def get_account_by_name(account_name=None):
         drive_type = target_account.get("drive_type", "quark")
         cookie = target_account.get("cookie", "")
         
-        if drive_type == "quark":
-            adapter = QuarkAdapter(cookie)
-        elif drive_type == "115":
-            adapter = Cloud115Adapter(cookie)
-        else:
-            adapter = QuarkAdapter(cookie)
+        # 使用工厂创建适配器
+        adapter = AdapterFactory.create_adapter(drive_type, cookie, 0)
+        if adapter:
+            return adapter, drive_type
         
-        return adapter, drive_type
+        # 工厂创建失败，回退到默认
+        return QuarkAdapter(cookie), "quark"
     
     # 旧格式兼容
     if config_data.get("cookie"):
@@ -224,10 +227,10 @@ def get_adapter_for_url(shareurl):
             if acc_enabled and acc_type == drive_type:
                 cookie = acc.get("cookie", "")
                 logging.info(f">>> 使用账户 '{acc.get('name')}' ({drive_type})")
-                if drive_type == "quark":
-                    return QuarkAdapter(cookie), drive_type
-                elif drive_type == "115":
-                    return Cloud115Adapter(cookie), drive_type
+                # 使用工厂创建适配器
+                adapter = AdapterFactory.create_adapter(drive_type, cookie, 0)
+                if adapter:
+                    return adapter, drive_type
     
     # 回退到旧格式
     if drive_type == "quark" and config_data.get("cookie"):
@@ -316,6 +319,9 @@ def update():
         if key not in dont_save_keys:
             config_data.update({key: value})
     Config.write_json(CONFIG_PATH, config_data)
+    # 配置变更时清空适配器实例缓存，确保新配置生效
+    if MULTI_DRIVE_SUPPORT:
+        AdapterFactory.clear_cache()
     # 重新加载任务
     if reload_tasks():
         logging.info(f">>> 配置更新成功")
@@ -592,7 +598,7 @@ def get_savepath_detail():
         
         if not account:
             return jsonify({"success": False, "data": {"error": "未配置有效的网盘账户，请先在系统配置中添加Cookie或多网盘账户"}})
-        
+
         paths = []
         if path := request.args.get("path"):
             path = re.sub(r"/+", "/", path)
@@ -608,6 +614,7 @@ def get_savepath_detail():
                     current_path += "/" + dir_name
                     path_fids.append(current_path)
                 get_fids = account.get_fids(path_fids)
+
                 if get_fids:
                     fid = get_fids[-1]["fid"]
                     paths = [

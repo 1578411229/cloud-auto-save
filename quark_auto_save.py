@@ -1511,7 +1511,7 @@ def dir_check_and_save_with_adapter(adapter, task, pwd_id, stoken, pdir_fid="", 
             batch_names = file_names[:100]
 
             # 115 适配器支持 file_names 参数，用于按文件名匹配新 fid
-            if hasattr(adapter, 'DRIVE_TYPE') and adapter.DRIVE_TYPE == "115":
+            if hasattr(adapter, 'DRIVE_TYPE') and (adapter.DRIVE_TYPE == "115" or adapter.DRIVE_TYPE == "baidu"):
                 save_file_return = adapter.save_file(
                     batch_fids, batch_tokens, to_pdir_fid, pwd_id, stoken,
                     file_names=batch_names
@@ -1580,7 +1580,7 @@ def do_rename_with_adapter(adapter, tree, node_id=None):
             print(f"重命名：{file['file_name']} → {file['file_name_re']}")
             if rename_ret.get("code") != 0:
                 print(f"      ↑ 失败，{rename_ret.get('message', '未知错误')}")
-
+        time.sleep(5)
 
 def _get_file_icon(f):
     """获取文件图标"""

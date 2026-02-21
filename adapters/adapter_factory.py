@@ -4,11 +4,16 @@
 负责根据配置创建不同网盘的适配器实例
 """
 import re
+import hashlib
 from typing import Dict, List, Optional, Type
 
 from adapters.base_adapter import BaseCloudDriveAdapter
 from adapters.quark_adapter import QuarkAdapter
 from adapters.cloud115_adapter import Cloud115Adapter
+from adapters.baidu_adapter import BaiduAdapter
+from adapters.xunlei_adapter import XunleiAdapter
+from adapters.aliyun_adapter import AliyunAdapter
+from adapters.uc_adapter import UCAdapter
 
 
 class AdapterFactory:
@@ -18,13 +23,30 @@ class AdapterFactory:
     ADAPTER_MAP: Dict[str, Type[BaseCloudDriveAdapter]] = {
         "quark": QuarkAdapter,
         "115": Cloud115Adapter,
+        "baidu": BaiduAdapter,
+        "xunlei": XunleiAdapter,
+        "aliyun": AliyunAdapter,
+        "uc": UCAdapter,
     }
 
     # URL 模式映射
     URL_PATTERNS: Dict[str, str] = {
         r"pan\.quark\.cn": "quark",
         r"(?:115|anxia|115cdn)\.com": "115",  # 115网盘有多个域名
+        r"pan\.baidu\.com": "baidu",
+        r"pan\.xunlei\.com": "xunlei",
+        r"(?:alipan|aliyundrive)\.com": "aliyun",
+        r"drive\.uc\.cn": "uc",
     }
+
+    # 实例缓存: (drive_type, cookie_hash) -> adapter_instance
+    _instance_cache: Dict[str, BaseCloudDriveAdapter] = {}
+
+    @classmethod
+    def _make_cache_key(cls, drive_type: str, cookie: str) -> str:
+        """生成缓存键"""
+        cookie_hash = hashlib.md5(cookie.encode("utf-8")).hexdigest()[:16]
+        return f"{drive_type}:{cookie_hash}"
 
     @classmethod
     def register_adapter(cls, drive_type: str, adapter_class: Type[BaseCloudDriveAdapter]):
@@ -51,9 +73,10 @@ class AdapterFactory:
         cls, drive_type: str, cookie: str, index: int = 0
     ) -> Optional[BaseCloudDriveAdapter]:
         """
-        创建适配器实例
+        创建或获取缓存的适配器实例。
+        同一 (drive_type, cookie) 组合只创建一次实例，后续返回缓存。
         Args:
-            drive_type: 网盘类型（quark, 115）
+            drive_type: 网盘类型（quark, 115, baidu 等）
             cookie: 认证 cookie
             index: 账户索引
         Returns:
@@ -64,11 +87,25 @@ class AdapterFactory:
             print(f"未知的网盘类型: {drive_type}")
             return None
 
+        # 查找缓存
+        cache_key = cls._make_cache_key(drive_type, cookie)
+        cached = cls._instance_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # 创建新实例并缓存
         try:
-            return adapter_class(cookie=cookie, index=index)
+            adapter = adapter_class(cookie=cookie, index=index)
+            cls._instance_cache[cache_key] = adapter
+            return adapter
         except Exception as e:
             print(f"创建适配器失败: {e}")
             return None
+
+    @classmethod
+    def clear_cache(cls):
+        """清空实例缓存（配置更新时调用）"""
+        cls._instance_cache.clear()
 
     @classmethod
     def get_drive_type_by_url(cls, url: str) -> Optional[str]:
