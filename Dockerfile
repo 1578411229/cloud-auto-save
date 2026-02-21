@@ -1,5 +1,5 @@
 # 使用官方 Python 镜像作为基础镜像
-FROM python:3.13-alpine
+FROM python:3.12-alpine
 
 #构建版本
 ARG BUILD_SHA
