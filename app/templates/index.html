@@ -104,7 +104,14 @@
                         </select>
                       </div>
                       <div class="col-md-5">
-                        <input type="text" v-model="account.cookie" class="form-control form-control-sm" placeholder="Cookie">
+                        <div class="input-group input-group-sm">
+                          <input type="text" v-model="account.cookie" class="form-control" :placeholder="account.drive_type === 'aliyun' ? 'refresh_token' : 'Cookie'">
+                          <div class="input-group-append" v-if="account.drive_type === 'aliyun'">
+                            <button type="button" class="btn btn-outline-info" @click="showAliyunQrcode(index)" title="扫码获取 refresh_token">
+                              <i class="bi bi-qr-code-scan"></i>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                       <div class="col-md-2 text-right">
                         <div class="btn-group btn-group-sm">
@@ -713,6 +720,47 @@
       </div>
     </div>
 
+    <!-- 模态框 阿里云盘二维码登录 -->
+    <div class="modal" tabindex="-1" id="aliyunQrcodeModal">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-cloud-arrow-up"></i> 阿里云盘扫码登录
+            </h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close" @click="stopAliyunQrcodePolling">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div class="modal-body text-center">
+            <div v-if="aliyunQrcode.loading" class="py-4">
+              <div class="spinner-border text-primary" role="status"></div>
+              <p class="mt-2">正在生成二维码...</p>
+            </div>
+            <div v-else-if="aliyunQrcode.error" class="alert alert-danger">
+              {{ aliyunQrcode.error }}
+              <button class="btn btn-sm btn-outline-primary mt-2" @click="generateAliyunQrcode">重新生成</button>
+            </div>
+            <div v-else>
+              <img :src="aliyunQrcode.qrCodeUrl" alt="扫码登录" style="width: 200px; height: 200px;" v-if="aliyunQrcode.qrCodeUrl">
+              <p class="mt-2 mb-1">
+                <span v-if="aliyunQrcode.status === 'NEW'" class="text-muted">请使用阿里云盘 App 扫码</span>
+                <span v-else-if="aliyunQrcode.status === 'SCANED'" class="text-info"><i class="bi bi-check-circle"></i> 已扫码，请在手机上确认</span>
+                <span v-else-if="aliyunQrcode.status === 'CONFIRMED'" class="text-success"><i class="bi bi-check-circle-fill"></i> 登录成功！</span>
+                <span v-else-if="aliyunQrcode.status === 'EXPIRED'" class="text-warning"><i class="bi bi-exclamation-triangle"></i> 二维码已过期</span>
+                <span v-else-if="aliyunQrcode.status === 'CANCELED'" class="text-danger"><i class="bi bi-x-circle"></i> 已取消</span>
+                <span v-else class="text-muted">{{ aliyunQrcode.statusMessage }}</span>
+              </p>
+              <button v-if="aliyunQrcode.status === 'EXPIRED' || aliyunQrcode.status === 'CANCELED'" class="btn btn-sm btn-outline-primary" @click="generateAliyunQrcode">刷新二维码</button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <small class="text-muted">扫码后 refresh_token 将自动填入</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast 提示 -->
     <div class="toast-container">
       <div v-for="toast in toasts" :key="toast.id" class="toast show shadow-sm" :class="toast.type" role="alert" aria-live="assertive" aria-atomic="true">
@@ -819,6 +867,18 @@
           driveType: "quark",       // 当前显示的网盘类型
           tempAccountName: null,    // 临时账户名称（从URL自动检测）
           error: undefined          // 错误信息
+        },
+        // 阿里云盘二维码登录
+        aliyunQrcode: {
+          loading: false,
+          error: null,
+          accountIndex: null,
+          t: "",
+          ck: "",
+          qrCodeUrl: "",
+          status: "",
+          statusMessage: "",
+          pollingTimer: null
         },
       },
       filters: {
@@ -957,7 +1017,35 @@
             return e.returnValue;
           }
         },
-        saveConfig() {
+        async saveConfig() {
+          // 保存前同步阿里云盘的最新 token，防止回滚
+          try {
+            const hasAliyunAccount = this.formData.accounts && this.formData.accounts.some(acc => acc.drive_type === 'aliyun');
+            if (hasAliyunAccount) {
+              const syncResponse = await axios.post('/account/sync_token');
+              if (syncResponse.data.success && syncResponse.data.data.accounts) {
+                const latestTokens = syncResponse.data.data.accounts;
+                // 更新本地账户数据中的阿里云盘 token
+                for (const latestAcc of latestTokens) {
+                  const localAcc = this.formData.accounts.find(acc => acc.drive_type === 'aliyun' && acc.name === latestAcc.name);
+                  if (localAcc) {
+                    const localUpdatedAt = localAcc._token_updated_at || 0;
+                    const serverUpdatedAt = latestAcc._token_updated_at || 0;
+                    // 如果服务器的 token 更新，使用服务器的
+                    if (serverUpdatedAt > localUpdatedAt) {
+                      console.log(`[Aliyun] 同步账户 ${latestAcc.name} 的最新 token`);
+                      localAcc.cookie = latestAcc.cookie;
+                      localAcc._token_updated_at = serverUpdatedAt;
+                    }
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('同步阿里云盘 token 失败:', error);
+          }
+          
+          // 保存配置
           axios.post('/update', this.formData)
             .then(response => {
               if (response.data.success) {
@@ -1632,6 +1720,85 @@
             case 'error': return 'bi-exclamation-circle-fill text-danger';
             case 'warning': return 'bi-exclamation-triangle-fill text-warning';
             default: return 'bi-info-circle-fill text-info';
+          }
+        },
+        // 阿里云盘二维码登录相关方法
+        showAliyunQrcode(accountIndex) {
+          this.aliyunQrcode.accountIndex = accountIndex;
+          this.aliyunQrcode.error = null;
+          this.aliyunQrcode.status = "";
+          this.aliyunQrcode.statusMessage = "";
+          $('#aliyunQrcodeModal').modal('show');
+          this.generateAliyunQrcode();
+        },
+        async generateAliyunQrcode() {
+          this.aliyunQrcode.loading = true;
+          this.aliyunQrcode.error = null;
+          this.aliyunQrcode.status = "";
+          try {
+            const response = await axios.get('/aliyun/qrcode/generate');
+            if (response.data.success) {
+              const data = response.data.data;
+              this.aliyunQrcode.t = data.t;
+              this.aliyunQrcode.ck = data.ck;
+              this.aliyunQrcode.qrCodeUrl = data.qrCodeUrl;
+              this.aliyunQrcode.status = "NEW";
+              this.aliyunQrcode.statusMessage = "等待扫码";
+              // 开始轮询二维码状态
+              this.startAliyunQrcodePolling();
+            } else {
+              this.aliyunQrcode.error = response.data.message || "生成二维码失败";
+            }
+          } catch (error) {
+            console.error('Error generating QR code:', error);
+            this.aliyunQrcode.error = "生成二维码失败，请检查网络连接";
+          } finally {
+            this.aliyunQrcode.loading = false;
+          }
+        },
+        startAliyunQrcodePolling() {
+          this.stopAliyunQrcodePolling();
+          this.aliyunQrcode.pollingTimer = setInterval(() => {
+            this.queryAliyunQrcodeStatus();
+          }, 3000);
+        },
+        stopAliyunQrcodePolling() {
+          if (this.aliyunQrcode.pollingTimer) {
+            clearInterval(this.aliyunQrcode.pollingTimer);
+            this.aliyunQrcode.pollingTimer = null;
+          }
+        },
+        async queryAliyunQrcodeStatus() {
+          if (!this.aliyunQrcode.t || !this.aliyunQrcode.ck) return;
+          try {
+            const response = await axios.get('/aliyun/qrcode/query', {
+              params: {
+                t: this.aliyunQrcode.t,
+                ck: this.aliyunQrcode.ck
+              }
+            });
+            if (response.data.success) {
+              const data = response.data.data;
+              this.aliyunQrcode.status = data.status;
+              this.aliyunQrcode.statusMessage = data.message;
+              // 处理不同状态
+              if (data.status === 'CONFIRMED') {
+                this.stopAliyunQrcodePolling();
+                // 登录成功，填入 refresh_token
+                if (data.refresh_token && this.aliyunQrcode.accountIndex !== null) {
+                  this.formData.accounts[this.aliyunQrcode.accountIndex].cookie = data.refresh_token;
+                  this.showToast(`阿里云盘登录成功: ${data.nick_name || data.user_name || ''}`, 'success');
+                  // 延迟关闭模态框
+                  setTimeout(() => {
+                    $('#aliyunQrcodeModal').modal('hide');
+                  }, 1500);
+                }
+              } else if (data.status === 'EXPIRED' || data.status === 'CANCELED') {
+                this.stopAliyunQrcodePolling();
+              }
+            }
+          } catch (error) {
+            console.error('Error querying QR code status:', error);
           }
         },
       }

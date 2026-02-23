@@ -244,7 +244,9 @@ class UCAdapter(BaseCloudDriveAdapter):
         }
 
         try:
+            print(url,payload,params)
             response = self._send_request("POST", url, json=payload, params=params)
+            print('save_file: ',response.text)
             result = self._safe_json(response)
             return result
         except Exception as e:

@@ -8,18 +8,18 @@
 
 对于一些持续更新的资源，隔段时间去转存十分麻烦。
 
-定期执行本脚本自动转存、文件名整理，配合 [SmartStrm](https://github.com/Cp0204/SmartStrm) / [OpenList](https://github.com/OpenListTeam/OpenList) , Emby 可达到自动追更的效果。🥳
+定期执行本脚本自动转存、文件名整理，配合 [SmartStrm](https://github.com/1578411229/SmartStrm) / [OpenList](https://github.com/OpenListTeam/OpenList) , Emby 可达到自动追更的效果。🥳
 
 
 [![wiki][wiki-image]][wiki-url] [![github releases][gitHub-releases-image]][github-url] [![docker pulls][docker-pulls-image]][docker-url] [![docker image size][docker-image-size-image]][docker-url]
 
 [wiki-image]: https://img.shields.io/badge/wiki-Documents-green?logo=github
-[gitHub-releases-image]: https://img.shields.io/github/v/release/Cp0204/quark-auto-save?logo=github
-[docker-pulls-image]: https://img.shields.io/docker/pulls/cp0204/quark-auto-save?logo=docker&&logoColor=white
-[docker-image-size-image]: https://img.shields.io/docker/image-size/cp0204/quark-auto-save?logo=docker&&logoColor=white
-[github-url]: https://github.com/Cp0204/quark-auto-save
-[docker-url]: https://hub.docker.com/r/cp0204/quark-auto-save
-[wiki-url]: https://github.com/Cp0204/quark-auto-save/wiki
+[gitHub-releases-image]: https://img.shields.io/github/v/release/1578411229/cloud-auto-save?logo=github
+[docker-pulls-image]: https://img.shields.io/docker/pulls/1578411229/cloud-auto-save?logo=docker&&logoColor=white
+[docker-image-size-image]: https://img.shields.io/docker/image-size/1578411229/cloud-auto-save?logo=docker&&logoColor=white
+[github-url]: https://github.com/1578411229/cloud-auto-save
+[docker-url]: https://hub.docker.com/r/1578411229/cloud-auto-save
+[wiki-url]: https://github.com/1578411229/cloud-auto-save/wiki
 
 ![run_log](img/run_log.png)
 
@@ -41,15 +41,15 @@
   - [x] 夸克网盘
   - [x] 115网盘
   - [x] 百度网盘
-  - [ ] 阿里云盘
+  - [x] 阿里云盘
   - [ ] UC网盘
   - [ ] 迅雷网盘
 
 - 分享链接
   - [x] 支持分享链接的子目录
   - [x] 记录失效分享并跳过任务
-  - [x] 支持需提取码的分享链接 <sup>[?](https://github.com/Cp0204/quark-auto-save/wiki/使用技巧集锦#支持需提取码的分享链接)</sup>
-  - [x] 智能搜索资源并自动填充 <sup>[?](https://github.com/Cp0204/quark-auto-save/wiki/CloudSaver搜索源)</sup>
+  - [x] 支持需提取码的分享链接 <sup>[?](https://github.com/1578411229/cloud-auto-save/wiki/使用技巧集锦#支持需提取码的分享链接)</sup>
+  - [x] 智能搜索资源并自动填充 <sup>[?](https://github.com/1578411229/cloud-auto-save/wiki/CloudSaver搜索源)</sup>
 
 - 文件管理
   - [x] 目标目录不存在时自动新建
@@ -69,8 +69,8 @@
   - [x] 插件模块化，允许自行开发和挂载[插件](./plugins)
 
 - 其它
-  - [x] 每日签到领空间 <sup>[?](https://github.com/Cp0204/quark-auto-save/wiki/使用技巧集锦#每日签到领空间)</sup>
-  - [x] 支持多个通知推送渠道 <sup>[?](https://github.com/Cp0204/quark-auto-save/wiki/通知推送服务配置)</sup>
+  - [x] 每日签到领空间 <sup>[?](https://github.com/1578411229/cloud-auto-save/wiki/使用技巧集锦#每日签到领空间)</sup>
+  - [x] 支持多个通知推送渠道 <sup>[?](https://github.com/1578411229/cloud-auto-save/wiki/通知推送服务配置)</sup>
   - [x] 支持多账号
 
 ## 部署
@@ -85,20 +85,19 @@ docker run -d \
   -p 5005:5005 \ # 映射端口，:前的可以改，即部署后访问的端口，:后的不可改
   -e WEBUI_USERNAME=admin \
   -e WEBUI_PASSWORD=admin123 \
-  -v ./quark-auto-save/config:/app/config \ # 必须，配置持久化
-  -v ./quark-auto-save/media:/media \ # 可选，模块alist_strm_gen生成strm使用
+  -v ./cloud-auto-save/config:/app/config \ # 必须，配置持久化
+  -v ./cloud-auto-save/media:/media \ # 可选，模块alist_strm_gen生成strm使用
   --network bridge \
   --restart unless-stopped \
   1578411229/cloud-auto-save:latest
-  # registry.cn-shenzhen.aliyuncs.com/cp0204/quark-auto-save:latest # 国内镜像地址
 ```
 
 docker-compose.yml
 
 ```yaml
-name: quark-auto-save
+name: cloud-auto-save
 services:
-  quark-auto-save:
+  cloud-auto-save:
     image: 1578411229/cloud-auto-save:latest
     container_name: cloud-auto-save
     network_mode: bridge
@@ -151,7 +150,7 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtow
 | `$TV`                                  |                         | [魔法匹配](#魔法匹配)剧集文件                                          |
 | `^(\d+)\.mp4`                          | `{TASKNAME}.S02E\1.mp4` | 01.mp4 → 任务名.S02E01.mp4                                             |
 
-更多正则使用说明：[正则处理教程](https://github.com/Cp0204/quark-auto-save/wiki/正则处理教程)
+更多正则使用说明：[正则处理教程](https://github.com/1578411229/cloud-auto-save/wiki/正则处理教程)
 
 > [!TIP]
 >
@@ -159,17 +158,17 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtow
 >
 > 自 v0.6.0 开始，支持更多以 {} 包裹的我称之为“魔法变量”，可以更灵活地进行重命名。
 >
-> 更多说明请看[魔法匹配和魔法变量](https://github.com/Cp0204/quark-auto-save/wiki/魔法匹配和魔法变量)
+> 更多说明请看[魔法匹配和魔法变量](https://github.com/1578411229/cloud-auto-save/wiki/魔法匹配和魔法变量)
 
 ### 刷新媒体库
 
-在有新转存时，可触发完成相应功能，如自动刷新媒体库、生成 .strm 文件等。配置指南：[插件配置](https://github.com/Cp0204/quark-auto-save/wiki/插件配置)
+在有新转存时，可触发完成相应功能，如自动刷新媒体库、生成 .strm 文件等。配置指南：[插件配置](https://github.com/1578411229/cloud-auto-save/wiki/插件配置)
 
-媒体库模块以插件的方式的集成，如果你有兴趣请参考[插件开发指南](https://github.com/Cp0204/quark-auto-save/tree/main/plugins)。
+媒体库模块以插件的方式的集成，如果你有兴趣请参考[插件开发指南](https://github.com/1578411229/cloud-auto-save/tree/main/plugins)。
 
 ### 更多使用技巧
 
-请参考 Wiki ：[使用技巧集锦](https://github.com/Cp0204/quark-auto-save/wiki/使用技巧集锦)
+请参考 Wiki ：[使用技巧集锦](https://github.com/1578411229/cloud-auto-save/wiki/使用技巧集锦)
 
 ## 生态项目
 
@@ -181,7 +180,7 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtow
 
   油猴脚本，在夸克网盘分享页面添加推送到 QAS 的按钮
 
-* [SmartStrm](https://github.com/Cp0204/SmartStrm)
+* [SmartStrm](https://github.com/1578411229/SmartStrm)
 
   STRM 文件生成工具，用于转存后处理，媒体免下载入库播放。
 
