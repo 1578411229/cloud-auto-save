@@ -572,9 +572,9 @@
       <!-- Page Footer -->
       <footer class="page-footer">
         <p>
-          <a target="_blank" href="https://github.com/Cp0204/quark-auto-save/wiki"><i class="bi bi-wechat"></i> 使用交流</a>
+          <a target="_blank" href="https://github.com/1578411229/cloud-auto-save/wiki"><i class="bi bi-wechat"></i> 使用交流</a>
           <a href="./static/js/qas.addtask.user.js"><i class="bi bi-cloud-plus-fill"></i> 油猴脚本</a>
-          <a target="_blank" href="https://github.com/Cp0204/quark-auto-save"><i class="bi bi-github"></i> GitHub</a>
+          <a target="_blank" href="https://github.com/1578411229/cloud-auto-save"><i class="bi bi-github"></i> GitHub</a>
         </p>
         <p><span v-html="versionTips"></span></p>
       </footer>
@@ -864,7 +864,7 @@
         },
         checkNewVersion() {
           this.versionTips = this.version;
-          axios.get('https://api.github.com/repos/Cp0204/quark-auto-save/tags')
+          axios.get('https://api.github.com/repos/1578411229/cloud-auto-save/tags')
             .then(response => {
               latestVersion = response.data[0].name;
               console.log(`检查版本：当前 ${this.version} 最新 ${latestVersion}`);

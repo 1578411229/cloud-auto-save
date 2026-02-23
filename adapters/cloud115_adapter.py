@@ -672,7 +672,7 @@ class Cloud115Adapter(BaseCloudDriveAdapter):
             "file_type": 0 if is_dir else 1,
             "dir": bool(is_dir),
             "size": item.get("s", 0),
-            "updated_at": int(item.get("t", 0)),
+            "updated_at": int(item.get("t", 0))*1000,
             "share_fid_token": own_id,
             "obj_category": self._get_category(item.get("ico", "")),
         }
