@@ -83,7 +83,7 @@ class UCAdapter(BaseCloudDriveAdapter):
     def get_account_info(self) -> Any:
         """获取账户信息"""
         # UC 网盘账户信息 API
-        url = f"{self.BASE_URL}/1/clouddrive/user/info"
+        url = f"{self.BASE_URL_DRIVE}/account/info"
         params = {"pr": "UCBrowser", "fr": "pc"}
         
         try:
@@ -228,6 +228,7 @@ class UCAdapter(BaseCloudDriveAdapter):
         """转存文件"""
         url = f"{self.BASE_URL}/1/clouddrive/share/sharepage/save"
         params = {
+            "entry": "update_share",
             "pr": "UCBrowser",
             "fr": "pc",
             "__dt": int(random.uniform(1, 5) * 60 * 1000),
@@ -244,10 +245,15 @@ class UCAdapter(BaseCloudDriveAdapter):
         }
 
         try:
-            print(url,payload,params)
             response = self._send_request("POST", url, json=payload, params=params)
-            print('save_file: ',response.text)
             result = self._safe_json(response)
+
+            # 检查容量限制错误
+            msg = result.get("message", "")
+            if "capacity limit" in msg.lower():
+                logging.error("[UC] 网盘容量不足，无法转存")
+                return {"code": 1, "status": 400, "message": "UC网盘容量不足，请清理空间后重试", "data": {}}
+
             return result
         except Exception as e:
             logging.error(f"[UC] 转存失败: {e}")
@@ -256,8 +262,10 @@ class UCAdapter(BaseCloudDriveAdapter):
     def query_task(self, task_id: str) -> Dict:
         """查询任务状态"""
         retry_index = 0
-        
-        while True:
+        max_retries = 60
+        result = {"status": 500, "code": 1, "message": "任务查询超时"}
+
+        while retry_index < max_retries:
             url = f"{self.BASE_URL}/1/clouddrive/task"
             params = {
                 "pr": "UCBrowser",
@@ -271,23 +279,38 @@ class UCAdapter(BaseCloudDriveAdapter):
             try:
                 response = self._send_request("GET", url, params=params)
                 result = self._safe_json(response)
-                
+
+                # 检查容量限制错误
+                msg = result.get("message", "")
+                if "capacity limit" in msg.lower():
+                    logging.error("[UC] 网盘容量不足")
+                    return {"status": 400, "code": 1, "message": "UC网盘容量不足，请清理空间后重试", "data": {"status": -1}}
+
                 if result.get("status") != 200:
                     return result
-                
-                if result.get("data", {}).get("status") == 2:
+
+                task_status = result.get("data", {}).get("status")
+
+                # 任务完成
+                if task_status == 2:
                     if retry_index > 0:
-                        print()
+                        logging.info("")
                     break
-                else:
-                    if retry_index == 0:
-                        task_title = result.get("data", {}).get("task_title", "任务")
-                        print(f"正在等待[{task_title}]执行结果", end="", flush=True)
-                    else:
-                        print(".", end="", flush=True)
-                    retry_index += 1
-                    time.sleep(0.5)
-                    
+
+                # 任务失败
+                if task_status == -1:
+                    msg = result.get("data", {}).get("message", "任务执行失败")
+                    logging.error(f"[UC] 任务失败: {msg}")
+                    return result
+
+                # 任务进行中
+                if retry_index == 0:
+                    task_title = result.get("data", {}).get("task_title", "任务")
+                    logging.info(f"[UC] 等待任务[{task_title}]执行结果...")
+
+                retry_index += 1
+                time.sleep(0.5)
+
             except Exception as e:
                 logging.error(f"[UC] 查询任务失败: {e}")
                 return {"status": 500, "code": 1, "message": f"查询任务失败: {e}"}

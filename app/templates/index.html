@@ -97,7 +97,7 @@
                         </div>
                       </div>
                       <div class="col-md-2">
-                        <select v-model="account.drive_type" class="form-control form-control-sm">
+                        <select v-model="account.drive_type" class="form-control form-control-sm" :disabled="isTokenProtectedAccount(account)">
                           <option v-for="dt in driveTypes" :key="dt.value" :value="dt.value">
                             {{ dt.label }}
                           </option>
@@ -105,10 +105,27 @@
                       </div>
                       <div class="col-md-5">
                         <div class="input-group input-group-sm">
-                          <input type="text" v-model="account.cookie" class="form-control" :placeholder="account.drive_type === 'aliyun' ? 'refresh_token' : 'Cookie'">
+                          <input type="text" v-model="account.cookie" class="form-control" 
+                                 :placeholder="account.drive_type === 'aliyun' ? 'refresh_token' : (account.drive_type === 'xunlei' ? 'refresh_token' : 'Cookie')"
+                                 :disabled="isTokenProtectedAccount(account)"
+                                 :title="isTokenProtectedAccount(account) ? 'Token 受保护，点击编辑按钮修改' : ''">
                           <div class="input-group-append" v-if="account.drive_type === 'aliyun'">
                             <button type="button" class="btn btn-outline-info" @click="showAliyunQrcode(index)" title="扫码获取 refresh_token">
                               <i class="bi bi-qr-code-scan"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-warning" @click="showManualTokenEdit(index)" title="手动修改 Token">
+                              <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-success" @click="refreshToken(index, 'aliyun')" title="刷新 Token" :disabled="tokenRefreshing[index]">
+                              <i class="bi" :class="tokenRefreshing[index] ? 'bi-arrow-repeat spin' : 'bi-arrow-repeat'"></i>
+                            </button>
+                          </div>
+                          <div class="input-group-append" v-if="account.drive_type === 'xunlei'">
+                            <button type="button" class="btn btn-outline-warning" @click="showManualTokenEdit(index)" title="手动修改 Token">
+                              <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-success" @click="refreshToken(index, 'xunlei')" title="刷新 Token" :disabled="tokenRefreshing[index]">
+                              <i class="bi" :class="tokenRefreshing[index] ? 'bi-arrow-repeat spin' : 'bi-arrow-repeat'"></i>
                             </button>
                           </div>
                         </div>
@@ -761,6 +778,39 @@
       </div>
     </div>
 
+    <!-- 模态框 手动修改 Token -->
+    <div class="modal" tabindex="-1" id="manualTokenModal">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-pencil-square"></i> 手动修改 Token
+            </h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted mb-2" style="font-size: 13px;">
+              请粘贴新的 <b v-text="manualTokenEdit.driveType === 'aliyun' ? 'refresh_token' : 'refresh_token'"></b>，保存后将立即生效。
+            </p>
+            <textarea v-model="manualTokenEdit.newToken" class="form-control" rows="4" placeholder="请粘贴新的 Token 值"></textarea>
+            <div v-if="manualTokenEdit.currentMasked" class="mt-2" style="font-size: 12px;">
+              <span class="text-muted">当前 Token：</span>
+              <code v-text="manualTokenEdit.currentMasked"></code>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">取消</button>
+            <button type="button" class="btn btn-primary btn-sm" @click="saveManualToken" :disabled="!manualTokenEdit.newToken || manualTokenEdit.saving">
+              <span v-if="manualTokenEdit.saving"><i class="bi bi-arrow-repeat spin"></i> 保存中...</span>
+              <span v-else>保存</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast 提示 -->
     <div class="toast-container">
       <div v-for="toast in toasts" :key="toast.id" class="toast show shadow-sm" :class="toast.type" role="alert" aria-live="assertive" aria-atomic="true">
@@ -880,6 +930,17 @@
           statusMessage: "",
           pollingTimer: null
         },
+        // Token 刷新状态（按账户索引）
+        tokenRefreshing: {},
+        // 手动修改 Token 弹窗数据
+        manualTokenEdit: {
+          accountIndex: null,
+          driveType: '',
+          accountName: '',
+          newToken: '',
+          currentMasked: '',
+          saving: false,
+        },
       },
       filters: {
         ts2date: function (value) {
@@ -919,6 +980,93 @@
         window.removeEventListener('beforeunload', this.handleBeforeUnload);
       },
       methods: {
+        // 检查账户是否为受保护的 token 类型（阿里云盘/迅雷网盘且已填写 cookie）
+        isTokenProtectedAccount(account) {
+          return (account.drive_type === 'aliyun' || account.drive_type === 'xunlei') && account.cookie;
+        },
+        // 刷新 Token
+        refreshToken(index, driveType) {
+          const account = this.formData.accounts[index];
+          if (!account || !account.cookie) {
+            this.showToast('请先填写 refresh_token', 'warning');
+            return;
+          }
+          
+          this.$set(this.tokenRefreshing, index, true);
+          const endpoint = driveType === 'aliyun' ? '/aliyun/token/refresh' : '/xunlei/token/refresh';
+          
+          axios.post(endpoint, { account_name: account.name })
+            .then(response => {
+              if (response.data.success) {
+                const data = response.data.data;
+                // 更新本地的 cookie（虽然后端已经更新了，但保持前端显示同步）
+                if (data.refresh_token) {
+                  account.cookie = data.refresh_token;
+                }
+                const userInfo = data.user_info;
+                const nickname = userInfo?.nickname || userInfo?.user_name || userInfo?.userName || '未知';
+                this.showToast(`Token 刷新成功，用户: ${nickname}`, 'success');
+              } else {
+                this.showToast('Token 刷新失败: ' + (response.data.message || '未知错误'), 'error');
+              }
+            })
+            .catch(error => {
+              console.error('Token refresh error:', error);
+              this.showToast('Token 刷新失败，请检查网络连接', 'error');
+            })
+            .finally(() => {
+              this.$set(this.tokenRefreshing, index, false);
+            });
+        },
+        // 显示手动修改 Token 弹窗
+        showManualTokenEdit(index) {
+          const account = this.formData.accounts[index];
+          if (!account) return;
+          this.manualTokenEdit.accountIndex = index;
+          this.manualTokenEdit.driveType = account.drive_type;
+          this.manualTokenEdit.accountName = account.name;
+          this.manualTokenEdit.newToken = '';
+          this.manualTokenEdit.saving = false;
+          // 显示当前 token 的脱敏值
+          const cookie = account.cookie || '';
+          if (cookie.length > 10) {
+            this.manualTokenEdit.currentMasked = cookie.substring(0, 6) + '****' + cookie.substring(cookie.length - 4);
+          } else {
+            this.manualTokenEdit.currentMasked = cookie ? '****' : '（未设置）';
+          }
+          $('#manualTokenModal').modal('show');
+        },
+        // 保存手动修改的 Token
+        saveManualToken() {
+          const newToken = this.manualTokenEdit.newToken.trim();
+          if (!newToken) {
+            this.showToast('请输入新的 Token', 'warning');
+            return;
+          }
+          this.manualTokenEdit.saving = true;
+          axios.post('/account/update_token', {
+            account_name: this.manualTokenEdit.accountName,
+            drive_type: this.manualTokenEdit.driveType,
+            new_token: newToken,
+          }).then(response => {
+            if (response.data.success) {
+              // 更新前端数据
+              const idx = this.manualTokenEdit.accountIndex;
+              if (idx !== null && this.formData.accounts[idx]) {
+                this.formData.accounts[idx].cookie = newToken;
+              }
+              this.showToast('Token 更新成功', 'success');
+              $('#manualTokenModal').modal('hide');
+            } else {
+              this.showToast('Token 更新失败: ' + (response.data.message || '未知错误'), 'error');
+            }
+          }).catch(error => {
+            console.error('Manual token update error:', error);
+            this.showToast('Token 更新失败，请检查网络连接', 'error');
+          }).finally(() => {
+            this.manualTokenEdit.saving = false;
+          });
+        },
         changeTab(tab) {
           this.activeTab = tab;
         },
@@ -1018,33 +1166,6 @@
           }
         },
         async saveConfig() {
-          // 保存前同步阿里云盘的最新 token，防止回滚
-          try {
-            const hasAliyunAccount = this.formData.accounts && this.formData.accounts.some(acc => acc.drive_type === 'aliyun');
-            if (hasAliyunAccount) {
-              const syncResponse = await axios.post('/account/sync_token');
-              if (syncResponse.data.success && syncResponse.data.data.accounts) {
-                const latestTokens = syncResponse.data.data.accounts;
-                // 更新本地账户数据中的阿里云盘 token
-                for (const latestAcc of latestTokens) {
-                  const localAcc = this.formData.accounts.find(acc => acc.drive_type === 'aliyun' && acc.name === latestAcc.name);
-                  if (localAcc) {
-                    const localUpdatedAt = localAcc._token_updated_at || 0;
-                    const serverUpdatedAt = latestAcc._token_updated_at || 0;
-                    // 如果服务器的 token 更新，使用服务器的
-                    if (serverUpdatedAt > localUpdatedAt) {
-                      console.log(`[Aliyun] 同步账户 ${latestAcc.name} 的最新 token`);
-                      localAcc.cookie = latestAcc.cookie;
-                      localAcc._token_updated_at = serverUpdatedAt;
-                    }
-                  }
-                }
-              }
-            }
-          } catch (error) {
-            console.warn('同步阿里云盘 token 失败:', error);
-          }
-          
           // 保存配置
           axios.post('/update', this.formData)
             .then(response => {

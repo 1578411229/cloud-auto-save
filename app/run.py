@@ -28,6 +28,7 @@ import base64
 import sys
 import os
 import re
+import time
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
@@ -311,39 +312,44 @@ def get_data():
 # 更新数据
 @app.route("/update", methods=["POST"])
 def update():
-    global config_data
+    global config_data,CONFIG_PATH
     if not is_login():
         return jsonify({"success": False, "message": "未登录"})
+    config_data = Config.read_json(CONFIG_PATH)
+
     dont_save_keys = ["task_plugins_config_default", "api_token"]
     
-    # 处理阿里云盘 refresh_token 回滚问题
+    # 处理阿里云盘/迅雷网盘 refresh_token 保护
+    # 对于这两种网盘类型，一旦配置了 cookie，就只能通过专门的刷新接口更新
     incoming_accounts = request.json.get("accounts", [])
     if incoming_accounts and MULTI_DRIVE_SUPPORT:
         current_accounts = config_data.get("accounts", [])
-        # 构建当前阿里云盘账户的 token 信息映射
-        current_aliyun_tokens = {}
+        # 构建当前需要 token 保护的账户映射（阿里云盘和迅雷网盘）
+        current_token_protected = {}
         for acc in current_accounts:
-            if acc.get("drive_type") == "aliyun":
+            if acc.get("drive_type") in ("aliyun", "xunlei"):
                 name = acc.get("name", "")
-                current_aliyun_tokens[name] = {
-                    "cookie": acc.get("cookie", ""),
-                    "_token_updated_at": acc.get("_token_updated_at", 0),
-                }
+                drive_type = acc.get("drive_type")
+                key = f"{drive_type}:{name}"
+                current_cookie = acc.get("cookie", "")
+                if current_cookie:  # 只有已填写 cookie 的账户才需要保护
+                    current_token_protected[key] = {
+                        "cookie": current_cookie,
+                        "_token_updated_at": acc.get("_token_updated_at", 0),
+                    }
         
-        # 检查并防止 token 回滚
+        # 对于已有 cookie 的阿里云盘/迅雷网盘账户，强制保留当前配置的 cookie
         for acc in incoming_accounts:
-            if acc.get("drive_type") == "aliyun":
+            if acc.get("drive_type") in ("aliyun", "xunlei"):
                 name = acc.get("name", "")
-                if name in current_aliyun_tokens:
-                    current_info = current_aliyun_tokens[name]
-                    incoming_updated_at = acc.get("_token_updated_at", 0)
-                    current_updated_at = current_info.get("_token_updated_at", 0)
-                    
-                    # 如果当前配置的 token 更新时间比传入的更新，使用当前的
-                    if current_updated_at > incoming_updated_at:
-                        logging.info(f"[Aliyun] 检测到账户 {name} 的 token 回滚尝试，保留较新的 token")
-                        acc["cookie"] = current_info["cookie"]
-                        acc["_token_updated_at"] = current_updated_at
+                drive_type = acc.get("drive_type")
+                key = f"{drive_type}:{name}"
+                if key in current_token_protected:
+                    current_info = current_token_protected[key]
+                    # 无论传入什么值，都使用当前配置的 cookie（防止前端修改）
+                    logging.debug(f"[{drive_type}] 保护账户 {name} 的 token，忽略传入的修改")
+                    acc["cookie"] = current_info["cookie"]
+                    acc["_token_updated_at"] = current_info["_token_updated_at"]
     
     for key, value in request.json.items():
         if key not in dont_save_keys:
@@ -655,6 +661,7 @@ def get_savepath_detail():
                     return jsonify({"success": False, "data": {"error": "获取fid失败，请检查路径是否存在"}})
         else:
             fid = request.args.get("fid", "0")
+            logging.info(f">>> get_savepath_detail fid={repr(fid)}, drive_type={drive_type}")
             # 如果通过 fid 访问子目录，尝试获取路径信息（面包屑导航）
             if fid and str(fid) != "0" and str(fid) != "root":
                 # 尝试获取路径信息（如果适配器支持）
@@ -794,28 +801,101 @@ def aliyun_token_refresh():
         return jsonify({"success": False, "message": str(e)})
 
 
-@app.route("/account/sync_token", methods=["POST"])
-def sync_account_token():
-    """同步账户的最新 token 到前端配置"""
+@app.route("/xunlei/token/refresh", methods=["POST"])
+def xunlei_token_refresh():
+    """刷新迅雷网盘 token 并获取最新的 refresh_token"""
     global config_data
     if not is_login():
         return jsonify({"success": False, "message": "未登录"})
-    
-    # 返回当前配置中所有阿里云盘账户的最新 refresh_token 和更新时间戳
+
+    if not MULTI_DRIVE_SUPPORT:
+        return jsonify({"success": False, "message": "多网盘支持未启用"})
+
+    account_name = request.json.get("account_name", "")
+
+    # 查找对应的账户
     accounts = config_data.get("accounts", [])
-    updated_accounts = []
+    target_account = None
     for acc in accounts:
-        if acc.get("drive_type") == "aliyun":
-            updated_accounts.append({
-                "name": acc.get("name", ""),
-                "cookie": acc.get("cookie", ""),
-                "_token_updated_at": acc.get("_token_updated_at", 0),
+        if acc.get("drive_type") == "xunlei":
+            if not account_name or acc.get("name") == account_name:
+                target_account = acc
+                break
+
+    if not target_account:
+        return jsonify({"success": False, "message": "未找到迅雷网盘账户"})
+
+    try:
+        from adapters.xunlei_adapter import XunleiAdapter
+        adapter = XunleiAdapter(target_account.get("cookie", ""), 0, target_account.get("name", ""))
+        result = adapter.init()
+
+        if result:
+            new_token = adapter._refresh_token
+            if new_token and new_token != target_account.get("cookie", ""):
+                target_account["cookie"] = new_token
+                target_account["_token_updated_at"] = time.time()
+                Config.write_json(CONFIG_PATH, config_data)
+                AdapterFactory.clear_cache()
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "refresh_token": new_token,
+                    "user_info": result,
+                },
+                "message": "Token 刷新成功",
             })
-    
-    return jsonify({
-        "success": True,
-        "data": {"accounts": updated_accounts},
-    })
+        else:
+            return jsonify({"success": False, "message": "Token 刷新失败，请检查 refresh_token 是否有效"})
+    except Exception as e:
+        logging.error(f"[Xunlei] Token 刷新失败: {e}")
+        return jsonify({"success": False, "message": str(e)})
+
+
+@app.route("/account/update_token", methods=["POST"])
+def update_account_token():
+    """手动更新阿里云盘/迅雷网盘的 Token"""
+    global config_data
+    if not is_login():
+        return jsonify({"success": False, "message": "未登录"})
+
+    if not MULTI_DRIVE_SUPPORT:
+        return jsonify({"success": False, "message": "多网盘支持未启用"})
+
+    account_name = request.json.get("account_name", "")
+    drive_type = request.json.get("drive_type", "")
+    new_token = request.json.get("new_token", "").strip()
+
+    if not new_token:
+        return jsonify({"success": False, "message": "Token 不能为空"})
+
+    if drive_type not in ("aliyun", "xunlei"):
+        return jsonify({"success": False, "message": "仅支持阿里云盘和迅雷网盘的 Token 更新"})
+
+    accounts = config_data.get("accounts", [])
+    target_account = None
+    for acc in accounts:
+        if acc.get("drive_type") == drive_type:
+            if not account_name or acc.get("name") == account_name:
+                target_account = acc
+                break
+
+    if not target_account:
+        return jsonify({"success": False, "message": f"未找到对应的{drive_type}账户"})
+
+    try:
+        old_token = target_account.get("cookie", "")
+        target_account["cookie"] = new_token
+        target_account["_token_updated_at"] = time.time()
+        Config.write_json(CONFIG_PATH, config_data)
+        # 清除适配器缓存
+        AdapterFactory.clear_cache()
+        logging.info(f"[{drive_type}] 账户 {account_name} 的 Token 已手动更新")
+        return jsonify({"success": True, "message": "Token 更新成功"})
+    except Exception as e:
+        logging.error(f"[{drive_type}] 手动更新 Token 失败: {e}")
+        return jsonify({"success": False, "message": str(e)})
 
 
 # 添加任务接口
@@ -959,6 +1039,15 @@ def init():
             logging.info(">>> 阿里云盘 token 保存器已初始化")
         except Exception as e:
             logging.warning(f">>> 初始化阿里云盘 token 保存器失败: {e}")
+
+    # 初始化迅雷网盘 token 保存器
+    if MULTI_DRIVE_SUPPORT:
+        try:
+            from adapters.xunlei_adapter import set_config_saver as xunlei_set_config_saver
+            xunlei_set_config_saver(CONFIG_PATH)
+            logging.info(">>> 迅雷网盘 token 保存器已初始化")
+        except Exception as e:
+            logging.warning(f">>> 初始化迅雷网盘 token 保存器失败: {e}")
 
 
 if __name__ == "__main__":
