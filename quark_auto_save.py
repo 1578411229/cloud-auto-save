@@ -1580,7 +1580,8 @@ def do_rename_with_adapter(adapter, tree, node_id=None):
             print(f"重命名：{file['file_name']} → {file['file_name_re']}")
             if rename_ret.get("code") != 0:
                 print(f"      ↑ 失败，{rename_ret.get('message', '未知错误')}")
-        time.sleep(5)
+        if adapter.DRIVE_TYPE == "baidu":
+            time.sleep(1)
 
 def _get_file_icon(f):
     """获取文件图标"""

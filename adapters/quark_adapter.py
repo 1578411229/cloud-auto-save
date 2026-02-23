@@ -178,7 +178,7 @@ class QuarkAdapter(BaseCloudDriveAdapter):
                 "pr": "ucpro",
                 "fr": "pc",
                 "uc_param_str": "",
-                "pdir_fid": pdir_fid,
+                "pdir_fid": pdir_fid if pdir_fid else "0",
                 "_page": page,
                 "_size": "50",
                 "_fetch_total": "1",
