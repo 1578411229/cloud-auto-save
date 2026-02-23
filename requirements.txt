@@ -3,4 +3,3 @@ apscheduler
 requests
 treelib
 natsort
-aligo
